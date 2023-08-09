@@ -12,8 +12,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
-      with:
-        fetch-depth: 2  # Fetch the last two commits
 
     - name: Setup Node.js
       uses: actions/setup-node@v2
@@ -22,14 +20,13 @@ jobs:
 
     - name: Check if package.json changed and create a tag
       run: |
-        PACKAGE_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep 'package.json')
-        if [ -z "$PACKAGE_CHANGED" ]; then
-            echo "No changes in package.json, exiting."
-            exit 0
+        PACKAGE_CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep 'package.json')
+        if [ "$PACKAGE_CHANGED" ]; then
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+            git tag "v$NEW_VERSION"
+            git push origin "v$NEW_VERSION"
+        else
+            echo "No version change detected."
         fi
-
-        NEW_VERSION=$(node -p "require('./package.json').version")
-        git config user.name "GitHub Actions"
-        git config user.email "github-actions@github.com"
-        git tag "v$NEW_VERSION"
-        git push origin "v$NEW_VERSION"
