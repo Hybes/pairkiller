@@ -18,12 +18,14 @@ jobs:
     - name: Check if package.json changed
       id: check_version
       run: |
-        git diff --name-only HEAD~1 HEAD | grep 'package.json'
-        if [ $? -eq 0 ]; then
-          echo "::set-output name=version_changed::true"
-        else
-          echo "::set-output name=version_changed::false"
-        fi
+         git diff --name-only HEAD~1 HEAD | grep 'package.json'
+         if [ $? -eq 0 ]; then
+           echo "::set-output name=version_changed::true"
+          else
+           echo "::set-output name=version_changed::false"
+          fi
+      shell: bash
+
 
     - name: Setup Node.js
       if: steps.check_version.outputs.version_changed == 'true'
