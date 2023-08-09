@@ -20,6 +20,14 @@ An Electron-based application that automatically starts the Blitz app when the L
 2. Download the latest release for your platform (Windows).
 3. Install the application by following the on-screen instructions.
 
+### Handling Windows SmartScreen
+
+When installing applications downloaded from the internet, Windows SmartScreen might show a warning. This is a security feature to help protect against unrecognized or malicious applications. To continue the installation:
+
+1. Click on "More Info".
+2. Select "Run Anyway".
+3. Follow the installation prompts.
+
 ### Building from Source
 
 1. Clone the repository:
