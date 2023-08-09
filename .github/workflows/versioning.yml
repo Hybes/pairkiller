@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+      with:
+        fetch-depth: 0  # Fetch all history for all branches and tags
 
     - name: Setup Node.js
       uses: actions/setup-node@v2
@@ -20,13 +22,13 @@ jobs:
 
     - name: Check if package.json changed and create a tag
       run: |
-        PACKAGE_CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep 'package.json')
+        PACKAGE_CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep 'package.json') || true
         if [ "$PACKAGE_CHANGED" ]; then
             NEW_VERSION=$(node -p "require('./package.json').version")
             git config user.name github-actions
             git config user.email github-actions@github.com
             git tag "v$NEW_VERSION"
-            git push origin "v$NEW_VERSION"
+            git push https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "v$NEW_VERSION"
         else
             echo "No version change detected."
         fi
