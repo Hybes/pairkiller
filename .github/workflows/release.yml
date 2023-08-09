@@ -1,12 +1,14 @@
-name: Release on Tag
+name: Build and Release
 
 on:
-  push:
-    tags:
-      - '*'
+  workflow_run:
+    workflows: ["Auto Tag Version"]
+    types:
+      - completed
 
 jobs:
   build-and-release:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
 
     steps:
@@ -18,17 +20,10 @@ jobs:
       with:
         node-version: '18'
 
-    # Install your project dependencies, build your project, etc.
-    # ...
+    - name: Install dependencies
+      run: npm install
 
-    - name: Create Release
-      uses: actions/create-release@v1
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        body: New release of the repository.
-        draft: false
-        prerelease: false
+    - name: Build and Release
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    # You can add more steps to upload assets to the release, etc.
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      run: npm run release
