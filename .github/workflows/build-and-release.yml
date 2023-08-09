@@ -18,15 +18,18 @@ jobs:
     - name: Check if package.json changed
       id: check_version
       run: |
-       git diff --name-only HEAD~1 HEAD | grep 'package.json' || true
-       if [ $? -eq 0 ]; then
+        git diff --name-only HEAD~1 HEAD | grep 'package.json'
+        if [ $? -eq 0 ]; then
           echo "::set-output name=version_changed::true"
         else
           echo "::set-output name=version_changed::false"
-       fi
+        fi
       shell: bash
-
-
+      continue-on-error: true
+    
+    - name: Run release
+      if: steps.check_version.outputs.changed == 'true'
+      run: npm run release
 
     - name: Setup Node.js
       if: steps.check_version.outputs.version_changed == 'true'
@@ -42,9 +45,18 @@ jobs:
       if: steps.check_version.outputs.version_changed == 'true'
       run: npm run build
 
+    - name: Check if gh is already installed
+      id: check_gh
+      run: |
+        if gh --version; then
+         echo "::set-output name=installed::true"
+        else
+          echo "::set-output name=installed::false"
+        fi
+
     - name: Install GitHub CLI
-      if: steps.check_version.outputs.version_changed == 'true'
-      run: choco install gh
+      if: steps.check_gh.outputs.installed == 'false'
+      run: choco install gh --install-arguments="'/l*v c:\gh_msi_install.log'"
 
     - name: Create GitHub Release and Upload Exe
       if: steps.check_version.outputs.version_changed == 'true'
