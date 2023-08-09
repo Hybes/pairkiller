@@ -1,4 +1,4 @@
-name: Build and Release on Version Change
+name: Build and Release
 
 on:
   push:
@@ -15,45 +15,37 @@ jobs:
       with:
         fetch-depth: 2
 
-    - name: Check for package.json changes
+    - name: Check if package.json changed
       id: check_version
       run: |
-        PACKAGE_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep 'package.json')
-        if [ "$PACKAGE_CHANGED" ]; then
-          echo "::set-output name=changed::true"
+        git diff --name-only HEAD~1 HEAD | grep 'package.json'
+        if [ $? -eq 0 ]; then
+          echo "::set-output name=version_changed::true"
         else
-          echo "::set-output name=changed::false"
+          echo "::set-output name=version_changed::false"
         fi
+
     - name: Setup Node.js
-      if: steps.check_version.outputs.changed == 'true'
+      if: steps.check_version.outputs.version_changed == 'true'
       uses: actions/setup-node@v2
       with:
-        node-version: '18'
+        node-version: 18
 
     - name: Install dependencies
-      if: steps.check_version.outputs.changed == 'true'
+      if: steps.check_version.outputs.version_changed == 'true'
       run: npm install
 
-    - name: Generate Changelog and Bump Version
-      if: steps.check_version.outputs.changed == 'true'
-      run: |
-        npm run release
-
-    - name: Build EXE
-      if: steps.check_version.outputs.changed == 'true'
+    - name: Build Electron App
+      if: steps.check_version.outputs.version_changed == 'true'
       run: npm run build
 
-    - name: Push changes
-      if: steps.check_version.outputs.changed == 'true'
-      run: |
-        git push origin main && git push --tags
+    - name: Install GitHub CLI
+      if: steps.check_version.outputs.version_changed == 'true'
+      run: choco install gh
 
-    - name: Create GitHub Release and Attach EXE
-      if: steps.check_version.outputs.changed == 'true'
-      uses: gh-actions/gh-release@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        assets: ./dist/*.exe
-        draft: false
-        prerelease: false
-        body_path: ./CHANGELOG.md
+    - name: Create GitHub Release and Upload Exe
+      if: steps.check_version.outputs.version_changed == 'true'
+      run: |
+        NEW_VERSION=$(node -p "require('./package.json').version")
+        gh auth login --with-token < ${{ secrets.GH_TOKEN }}
+        gh release create "v$NEW_VERSION" "./dist/*" --title "v$NEW_VERSION" --notes "Release for v$NEW_VERSION"
