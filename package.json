@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "tailwindcss build -i styles.css -o output.css && electron .",
-    "build": "tailwindcss build -i styles.css -o output.css && electron-builder build --windows",
+    "build": "tailwindcss build -i styles.css -o output.css && electron-builder build --windows --publish never",
     "release": "standard-version"
   },
   "build": {
