@@ -1,18 +1,18 @@
 {
   "name": "blitz-for-league-only",
   "productName": "Blitz for League Only",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Open and Close Blitz based on the status of League Client",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder build --windows",
+    "start": "tailwindcss build -i styles.css -o output.css && electron .",
+    "build": "tailwindcss build -i styles.css -o output.css && electron-builder build --windows",
     "release": "electron-builder --windows --publish always"
   },
   "build": {
     "appId": "com.hybes.blitz-for-league-only",
     "win": {
-      "artifactName": "Blitz for League ONLY Installer - ${version}.${ext}",
+      "artifactName": "Blitz for League Only Installer ${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -28,17 +28,22 @@
     "linux": {
       "target": "dir"
     },
-    "publish": [{
-      "provider": "github",
-      "owner": "Hybes",
-      "repo": "blitz-for-league-only"
-    }]
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Hybes",
+        "repo": "blitz-for-league-only"
+      }
+    ]
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "electron-context-menu": "^3.6.1"
+    "autoprefixer": "^10.4.14",
+    "electron-context-menu": "^3.6.1",
+    "postcss": "^8.4.27",
+    "tailwindcss": "^3.3.3"
   },
   "devDependencies": {
     "electron": "^25.4.0",

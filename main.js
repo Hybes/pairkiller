@@ -1,23 +1,22 @@
 const fs = require('fs');
-const { app, BrowserWindow, Menu, Tray, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, shell, ipcMain } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
+const configPath = path.join(app.getPath('userData'), 'config.json');
+const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
 
 let tray = null;
 let win = null;
 let monitoring = true;
-const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
 let blitzPath = defaultBlitzPath;
 
-const configPath = path.join(app.getPath('userData'), 'config.json');
-
-// Load configuration if it exists
 if (fs.existsSync(configPath)) {
     const configData = JSON.parse(fs.readFileSync(configPath));
     blitzPath = configData.blitzPath || blitzPath;
 }
 
 function updateTrayMenu() {
+    const appVersion = app.getVersion();
     const contextMenu = Menu.buildFromTemplate([
         {
             label: 'Toggle Monitoring',
@@ -32,23 +31,6 @@ function updateTrayMenu() {
             }
         },
         {
-            label: 'Set Blitz Path',
-            click: () => {
-                let paths = dialog.showOpenDialogSync(win, {
-                    properties: ['openFile'],
-                    title: 'Select Blitz Executable',
-                    filters: [{ name: 'Executables', extensions: ['exe'] }]
-                });
-
-                if (paths && paths.length > 0) {
-                    blitzPath = paths[0];
-
-                    // Save to configuration
-                    fs.writeFileSync(configPath, JSON.stringify({ blitzPath }));
-                }
-            },
-      },
-      {
         label: 'Start on Boot',
         type: 'checkbox',
         checked: app.getLoginItemSettings().openAtLogin,
@@ -57,9 +39,25 @@ function updateTrayMenu() {
             app.setLoginItemSettings({
                 openAtLogin: startOnBoot
             });
-            updateTrayMenu();  // Update the tray menu to reflect the change
+            updateTrayMenu();
         }
-    },
+        },
+        {
+            label: 'About',
+            click: () => {
+                openAboutWindow();
+            }
+        },
+        {
+            label: 'Check for updates',
+            click: () => {
+                shell.openExternal('https://github.com/Hybes/blitz-for-league-only/releases');
+            }
+        },
+        {
+            label: `Version: ${appVersion}`,
+            enabled: false
+        },
         {
             label: 'Quit',
             click: () => {
@@ -70,82 +68,78 @@ function updateTrayMenu() {
     tray.setContextMenu(contextMenu);
 }
 
-function createWindow() {
-    win = new BrowserWindow({
-        width: 800,
-        height: 600,
+ipcMain.on('open-link', (event, url) => {
+    shell.openExternal(url);
+});
+
+function openAboutWindow() {
+    let aboutWindow = new BrowserWindow({
+        icon: path.join(__dirname, 'icon.png'),
+        autoHideMenuBar: true,
+        width: 700,
+        height: 360,
         webPreferences: {
             nodeIntegration: true,
+            contextIsolation: false,
+            preload: path.join(__dirname, 'preload.js'),
         },
-        show: false,
+        resizable: false,
+        title: "About"
     });
-    win.loadFile('index.html');
+    aboutWindow.loadFile('about.html');
 }
 
 app.whenReady().then(() => {
     tray = new Tray(path.join(__dirname, 'icon.png'));
-  updateTrayMenu(); // Use the function to set up the tray menu
-  if (monitoring) {
+    updateTrayMenu(); // Use the function to set up the tray menu
+    tray.on('click', () => {
+        openAboutWindow();
+    });
+    if (monitoring) {
     startMonitoring();
 }
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', (e) => {
+    e.preventDefault();
     if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
+        return;
     }
 });
 
 function startMonitoring() {
-  setInterval(() => {
+    setInterval(() => {
     if (monitoring) {
-          console.log('Checking for LeagueClient.exe and League of Legends.exe...');
-
-          exec('tasklist /nh /fi "imagename eq LeagueClient.exe" | find /i "LeagueClient.exe"', (error, stdout) => {
-              if (stdout.includes('LeagueClient.exe')) {
-                  console.log('LeagueClient.exe found.');
-                  ensureBlitzIsRunning();
-              } else {
-                  console.log('LeagueClient.exe not found.');
-
+        exec('tasklist /nh /fi "imagename eq LeagueClient.exe" | find /i "LeagueClient.exe"', (error, stdout) => {
+            if (stdout.includes('LeagueClient.exe')) {
+                ensureBlitzIsRunning();
+            } else {
                   // If LeagueClient isn't found, check for the game client
-                  exec('tasklist /nh /fi "imagename eq League of Legends.exe" | find /i "League of Legends.exe"', (errorGame, stdoutGame) => {
-                      if (stdoutGame.includes('League of Legends.exe')) {
-                          console.log('League of Legends.exe found.');
-                          ensureBlitzIsRunning();
-                      } else {
-                          console.log('League of Legends.exe not found.');
+                exec('tasklist /nh /fi "imagename eq League of Legends.exe" | find /i "League of Legends.exe"', (errorGame, stdoutGame) => {
+                    if (stdoutGame.includes('League of Legends.exe')) {
+                        ensureBlitzIsRunning();
+                    } else {
 
                           // If neither the game client nor the launcher is running, close Blitz if it is running
-                          exec('tasklist /nh /fi "imagename eq Blitz.exe" | find /i "Blitz.exe"', (errorBlitz, stdoutBlitz) => {
-                              if (stdoutBlitz.includes('Blitz.exe')) {
-                                  console.log('Killing Blitz.exe...');
-                                  exec('taskkill /im Blitz.exe /f');
-                              } else {
-                                  console.log('Blitz.exe is not running.');
-                              }
-                          });
-                      }
-                  });
-              }
-          });
-      }
+                        exec('tasklist /nh /fi "imagename eq Blitz.exe" | find /i "Blitz.exe"', (errorBlitz, stdoutBlitz) => {
+                            if (stdoutBlitz.includes('Blitz.exe')) {
+                                exec('taskkill /im Blitz.exe /f');
+                            } else {
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
   }, 3000); // Adjust the interval as needed
 }
 
 function ensureBlitzIsRunning() {
-  exec('tasklist /nh /fi "imagename eq Blitz.exe" | find /i "Blitz.exe"', (errorBlitz, stdoutBlitz) => {
-      if (!stdoutBlitz.includes('Blitz.exe')) {
-          console.log('Blitz.exe not found. Opening Blitz...');
-          exec('start "" "' + blitzPath + '"');
-      } else {
-          console.log('Blitz.exe is already running.');
-      }
-  });
+    exec('tasklist /nh /fi "imagename eq Blitz.exe" | find /i "Blitz.exe"', (errorBlitz, stdoutBlitz) => {
+        if (!stdoutBlitz.includes('Blitz.exe')) {
+            exec('start "" "' + blitzPath + '"');
+        } else {
+        }
+    });
 }

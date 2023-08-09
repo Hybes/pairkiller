@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+      {
+          "type": "node",
+          "request": "launch",
+          "name": "Launch Electron",
+          "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+          "program": "${workspaceFolder}/main.js",
+          "stopOnEntry": false,
+          "args": [],
+          "cwd": "${workspaceFolder}",
+          "preLaunchTask": "npm: start",
+          "runtimeArgs": [
+              "--enable-logging"
+          ],
+          "env": {
+              "NODE_ENV": "development"
+          },
+          "console": "integratedTerminal",
+          "sourceMaps": false,
+          "outFiles": []
+      }
+  ]
+}
