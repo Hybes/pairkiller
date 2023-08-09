@@ -1,4 +1,4 @@
-name: Build and Release
+name: Release on Version Tag
 
 on:
   workflow_run:
@@ -8,7 +8,6 @@ on:
 
 jobs:
   build-and-release:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
 
     steps:
@@ -23,7 +22,15 @@ jobs:
     - name: Install dependencies
       run: npm install
 
-    - name: Build and Release
-      env:
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      run: npm run release
+    - name: Build Electron App
+      run: npm run build
+
+    - name: Release Electron App
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: false
+        title: "Release ${{ github.ref }}"
+        files: |
+          dist/*.exe
