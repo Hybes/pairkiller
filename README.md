@@ -1,6 +1,6 @@
 ---
 
-# Blitz for League Monitor
+# Blitz for League ONLY
 
 An Electron-based application that automatically starts the Blitz app when the League of Legends client or game is running and closes Blitz when they are not. 
 
