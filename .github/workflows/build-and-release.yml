@@ -53,6 +53,7 @@ jobs:
         else
           echo "::set-output name=installed::false"
         fi
+      shell: bash
 
     - name: Install GitHub CLI
       if: steps.check_gh.outputs.installed == 'false'
