@@ -59,11 +59,12 @@ jobs:
       if: env.VERSION_CHANGED == 'true'
       run: |
         $newVersion = $(node -p "require('./package.json').version")
+        $changelogContent = Get-Content -Raw -Path ./changelog.md
         $exeFiles = Get-ChildItem -Path .\dist\ -Filter *.exe
         foreach ($file in $exeFiles) {
             $filePaths += $file.FullName
         }
-        gh release create "v$newVersion" $filePaths --title "v$newVersion" --notes "Release for v$newVersion"
+        gh release create "v$newVersion" $filePaths --title "v$newVersion" --notes "$changelogContent"
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GH_TOKEN }}
