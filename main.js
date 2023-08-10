@@ -1,9 +1,11 @@
 const fs = require('fs');
 const { app, BrowserWindow, Menu, Tray, shell, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const util = require('util');
 const fetch = require('node-fetch')
 const exec = util.promisify(require('child_process').exec);
+
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
@@ -59,6 +61,19 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', (e) => {
     e.preventDefault();
+});
+
+app.on('ready', () => {
+    autoUpdater.checkForUpdatesAndNotify();
+});
+
+autoUpdater.on('update-available', () => {
+    console.log('Update available to download.');
+});
+
+autoUpdater.on('update-downloaded', () => {
+    console.log('Update downloaded, installing now.');
+    autoUpdater.quitAndInstall();
 });
 
 async function isTaskRunning(taskName) {
