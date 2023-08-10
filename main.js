@@ -40,15 +40,19 @@ else {
 ipcMain.on('open-link', (event, url) => {
     shell.openExternal(url);
 });
-
 ipcMain.on('toggle-usage-collection', (event, value) => {
     config.anonymousUsage = value;
     fs.writeFileSync(configPath, JSON.stringify(config));
 });
-
-
 ipcMain.handle('get-usage-collection', (event) => {
     return config.anonymousUsage;
+});
+ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdatesAndNotify();
+});
+ipcMain.on('install-update', () => {
+    // This will quit and install the update, ensuring the app is updated
+    autoUpdater.quitAndInstall();
 });
 
 app.whenReady().then(() => {
@@ -67,13 +71,12 @@ app.on('ready', () => {
     autoUpdater.checkForUpdatesAndNotify();
 });
 
-autoUpdater.on('update-available', () => {
-    console.log('Update available to download.');
+autoUpdater.on('update-available', (info) => {
+    mainWindow.webContents.send('update-available', info.version);
 });
 
-autoUpdater.on('update-downloaded', () => {
-    console.log('Update downloaded, installing now.');
-    autoUpdater.quitAndInstall();
+autoUpdater.on('update-downloaded', (info) => {
+    mainWindow.webContents.send('update-downloaded', info.version);
 });
 
 async function isTaskRunning(taskName) {

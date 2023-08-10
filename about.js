@@ -16,6 +16,23 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }
   });
 
+  document.getElementById('checkForUpdatesButton').addEventListener('click', () => {
+    ipcRenderer.send('check-for-updates');
+  });
+
+  ipcRenderer.on('update-available', (event, version) => {
+    // Inform the user that an update is available and is being downloaded
+    console.log(`Update to version ${version} is available and being downloaded.`);
+});
+
+ipcRenderer.on('update-downloaded', (event, version) => {
+    // Prompt the user to restart and install the update
+    const response = confirm(`Update to version ${version} has been downloaded. Would you like to install and restart now?`);
+    if (response) {
+        ipcRenderer.send('install-update');
+    }
+});
+
   ipcRenderer.invoke('get-usage-collection').then((value) => {
       usageCollectionToggle.checked = value;
   });
