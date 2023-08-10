@@ -87,7 +87,7 @@ async function startMonitoring() {
 async function sendWebhook() {
   if (config.anonymousUsage) {
       try {
-          const response = await fetch('https://automate.connectdorset.com/bflo-collector', {
+          const response = await fetch('https://automate.connectdorset.com/webhook/bflo-collector', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ event: 'app-started' })
