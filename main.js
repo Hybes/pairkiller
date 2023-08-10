@@ -2,8 +2,8 @@ const fs = require('fs');
 const { app, BrowserWindow, Menu, Tray, shell, ipcMain } = require('electron');
 const path = require('path');
 const util = require('util');
+const fetch = require('node-fetch')
 const exec = util.promisify(require('child_process').exec);
-const fetch = require('node-fetch');
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
@@ -15,18 +15,24 @@ const BLITZ_APP = 'Blitz.exe';
 let tray = null;
 let monitoring = true;
 let config = {
-  blitzPath: defaultBlitzPath,
-  anonymousUsage: true
+    blitzPath: defaultBlitzPath,
+    anonymousUsage: true
 };
 
 if (fs.existsSync(configPath)) {
-  try {
-      const fileData = fs.readFileSync(configPath, 'utf8');
-      const loadedConfig = JSON.parse(fileData);
-      config = { ...config, ...loadedConfig };
-  } catch (error) {
-      console.error('Error reading configuration:', error);
-  }
+    try {
+        const fileData = fs.readFileSync(configPath, 'utf8');
+        const loadedConfig = JSON.parse(fileData);
+        config = { ...config, ...loadedConfig };
+    } catch (error) {
+        console.error('Error reading configuration:', error);
+    }
+}
+else {
+    // It's the first time the app is being started. Set it to start on boot by default.
+    app.setLoginItemSettings({
+        openAtLogin: true
+    });
 }
 
 ipcMain.on('open-link', (event, url) => {
@@ -34,8 +40,13 @@ ipcMain.on('open-link', (event, url) => {
 });
 
 ipcMain.on('toggle-usage-collection', (event, value) => {
-  config.anonymousUsage = value;
-  fs.writeFileSync(configPath, JSON.stringify(config));
+    config.anonymousUsage = value;
+    fs.writeFileSync(configPath, JSON.stringify(config));
+});
+
+
+ipcMain.handle('get-usage-collection', (event) => {
+    return config.anonymousUsage;
 });
 
 app.whenReady().then(() => {
@@ -51,54 +62,73 @@ app.on('window-all-closed', (e) => {
 });
 
 async function isTaskRunning(taskName) {
+    if (!taskName) {
+        console.error('Error: taskName is not provided or is undefined');
+        return false;
+    }
+
     try {
         const { stdout } = await exec(`tasklist /nh /fi "imagename eq ${taskName}" | find /i "${taskName}"`);
         return stdout.includes(taskName);
     } catch (error) {
+        if (!error.stdout || !error.stderr) {
+            return false;
+        }
         console.error(`Error checking task ${taskName}:`, error);
         return false;
     }
 }
 
+async function ensureBlitzIsRunning() {
+    const isBlitzRunning = await isTaskRunning(BLITZ_APP);
+    if (!isBlitzRunning) {
+        exec(`"${config.blitzPath}"`, (error) => {
+            if (error) {
+                console.error("Error starting Blitz:", error);
+            }
+        });
+    }
+}
+
 async function startMonitoring() {
     setInterval(async () => {
-        try {
-            if (monitoring) {
+        if (monitoring) {
+            try {
                 const isLeagueClientRunning = await isTaskRunning(LEAGUE_CLIENT);
-                const isLeagueGameRunning = await isTaskRunning(LEAGUE_GAME);
-                const isBlitzAppRunning = await isTaskRunning(BLITZ_APP);
+                const isLeagueOfLegendsRunning = await isTaskRunning(LEAGUE_GAME);
+                const isBlitzRunning = await isTaskRunning(BLITZ_APP);
 
-                if (isLeagueClientRunning || isLeagueGameRunning) {
-                    if (!isBlitzAppRunning) {
-                        exec(`start "" "${blitzPath}"`);
-                    }
-                } else {
-                    if (isBlitzAppRunning) {
-                        exec('taskkill /im Blitz.exe /f');
-                    }
+                if (isLeagueClientRunning || isLeagueOfLegendsRunning) {
+                    await ensureBlitzIsRunning();
+                } else if (!isLeagueClientRunning && !isLeagueOfLegendsRunning && isBlitzRunning) {
+                    exec('taskkill /im Blitz.exe /f', (errorKill) => {
+                        if (errorKill) {
+                            console.error("Error killing Blitz:", errorKill);
+                        }
+                    });
                 }
+            } catch (error) {
+                console.error("Error during monitoring:", error);
             }
-        } catch (error) {
-            console.error('Error in startMonitoring:', error);
         }
     }, 3000);
 }
 
 async function sendWebhook() {
-  if (config.anonymousUsage) {
-      try {
-          const response = await fetch('https://automate.connectdorset.com/webhook/bflo-collector', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ event: 'app-started' })
-          });
-          if (!response.ok) {
-              console.error('Webhook error:', response.statusText);
-          }
-      } catch (error) {
-          console.error('Webhook error:', error);
-      }
-  }
+    if (config.anonymousUsage) {
+        try {
+            const response = await fetch('https://automate.connectdorset.com/webhook/bflo-collector', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event: 'app-started' })
+            });
+            if (!response.ok) {
+                console.error('Webhook error:', response.statusText);
+            }
+        } catch (error) {
+            console.error('Webhook error:', error);
+        }
+    }
 }
 
 function setupTray() {
@@ -108,71 +138,71 @@ function setupTray() {
 }
 
 function updateTrayMenu() {
-  const appVersion = app.getVersion();
-  const contextMenu = Menu.buildFromTemplate([
-      {
-          label: 'Toggle Monitoring',
-          type: 'checkbox',
-          checked: monitoring,
-          click: () => {
-              monitoring = !monitoring;
-              if (monitoring) {
-                  startMonitoring();
-              }
-              updateTrayMenu();
-          }
-      },
-      {
-      label: 'Start on Boot',
-      type: 'checkbox',
-      checked: app.getLoginItemSettings().openAtLogin,
-      click: () => {
-          const startOnBoot = !app.getLoginItemSettings().openAtLogin;
-          app.setLoginItemSettings({
-              openAtLogin: startOnBoot
-          });
-          updateTrayMenu();
-      }
-      },
-      {
-          label: 'About',
-          click: () => {
-              openAboutWindow();
-          }
-      },
-      {
-          label: 'Check for updates',
-          click: () => {
-              shell.openExternal('https://github.com/Hybes/blitz-for-league-only/releases');
-          }
-      },
-      {
-          label: `Version: ${appVersion}`,
-          enabled: false
-      },
-      {
-          label: 'Quit',
-          click: () => {
-              app.quit();
-          }
-      }
-  ]);
-  tray.setContextMenu(contextMenu);
+    const appVersion = app.getVersion();
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: 'Toggle Monitoring',
+            type: 'checkbox',
+            checked: monitoring,
+            click: () => {
+                monitoring = !monitoring;
+                if (monitoring) {
+                    startMonitoring();
+                }
+                updateTrayMenu();
+            }
+        },
+        {
+            label: 'Start on Boot',
+            type: 'checkbox',
+            checked: app.getLoginItemSettings().openAtLogin,
+            click: () => {
+                const startOnBoot = !app.getLoginItemSettings().openAtLogin;
+                app.setLoginItemSettings({
+                    openAtLogin: startOnBoot
+                });
+                updateTrayMenu();
+            }
+        },
+        {
+            label: 'About',
+            click: () => {
+                openAboutWindow();
+            }
+        },
+        {
+            label: 'Check for updates',
+            click: () => {
+                shell.openExternal('https://github.com/Hybes/blitz-for-league-only/releases');
+            }
+        },
+        {
+            label: `Version: ${appVersion}`,
+            enabled: false
+        },
+        {
+            label: 'Quit',
+            click: () => {
+                app.quit();
+            }
+        }
+    ]);
+    tray.setContextMenu(contextMenu);
 }
 
 function openAboutWindow() {
-  let aboutWindow = new BrowserWindow({
-      icon: path.join(__dirname, 'icon.png'),
-      autoHideMenuBar: true,
-      width: 700,
-      height: 360,
-      webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false,
-          preload: path.join(__dirname, 'preload.js'),
-      },
-      resizable: false,
-      title: "About"
-  });
-  aboutWindow.loadFile('about.html');
+    let aboutWindow = new BrowserWindow({
+        icon: path.join(__dirname, 'icon.png'),
+        autoHideMenuBar: true,
+        width: 700,
+        height: 360,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+            preload: path.join(__dirname, 'preload.js'),
+        },
+        resizable: false,
+        title: "About"
+    });
+    aboutWindow.loadFile('about.html');
 }

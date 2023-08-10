@@ -86,16 +86,6 @@
           <label for="usageCollectionToggle">Collect Anonymous Usage:</label>
           <input type="checkbox" id="usageCollectionToggle" checked />
       </div>
-      <script>
-        const usageCollectionToggle = document.getElementById('usageCollectionToggle');
-        const { ipcRenderer } = require('electron');
-        ipcRenderer.invoke('get-usage-collection').then((value) => {
-            usageCollectionToggle.checked = value;
-        });
-        usageCollectionToggle.addEventListener('change', () => {
-            ipcRenderer.send('toggle-usage-collection', usageCollectionToggle.checked);
-        });
-    </script>
       </div>
       <div class="footer-social-icons py-8 text-center">
         <ul class="social-icons">
