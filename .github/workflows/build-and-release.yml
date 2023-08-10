@@ -28,7 +28,7 @@ jobs:
       continue-on-error: true
     
     - name: Run release
-      if: steps.check_version.outputs.changed == 'true'
+      if: steps.check_version.outputs.version_changed == 'true'
       run: npm run release
 
     - name: Setup Node.js
