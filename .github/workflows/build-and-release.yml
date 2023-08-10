@@ -58,9 +58,9 @@ jobs:
     - name: Create GitHub Release and Upload Exe
       if: env.VERSION_CHANGED == 'true'
       run: |
-        NEW_VERSION=$(node -p "require('./package.json').version")
-        echo "$NEW_VERSION"
-        echo "${{ secrets.GH_TOKEN }}" | gh auth login --with-token
-        gh release create "v$NEW_VERSION" "./dist/*" --title "v$NEW_VERSION" --notes "Release for v$NEW_VERSION"
+        $NEW_VERSION = node -p "require('./package.json').version"
+        gh auth login --with-token < ${{ secrets.GH_TOKEN }}
+        $EXE_FILE = Get-ChildItem ./dist -File | Where-Object { $_.Extension -eq ".exe" } | ForEach-Object { $_.FullName }
+        gh release create "v$NEW_VERSION" $EXE_FILE --title "v$NEW_VERSION" --notes "Release for v$NEW_VERSION"
       shell: bash
 
