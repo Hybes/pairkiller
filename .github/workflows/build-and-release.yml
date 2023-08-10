@@ -59,8 +59,7 @@ jobs:
       if: env.VERSION_CHANGED == 'true'
       run: |
         $newVersion = $(node -p "require('./package.json').version")
-        gh auth login --with-token ${{ secrets.GH_TOKEN }}
         gh release create "v$newVersion" ".\dist\*.exe" --title "v$newVersion" --notes "Release for v$newVersion"
       shell: pwsh
-
-
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
