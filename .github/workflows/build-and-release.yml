@@ -63,5 +63,8 @@ jobs:
       if: steps.check_version.outputs.version_changed == 'true'
       run: |
         NEW_VERSION=$(node -p "require('./package.json').version")
-        gh auth login --with-token < ${{ secrets.GH_TOKEN }}
+        echo "$NEW_VERSION"
+        echo "${{ secrets.GH_TOKEN }}" | gh auth login --with-token
         gh release create "v$NEW_VERSION" "./dist/*" --title "v$NEW_VERSION" --notes "Release for v$NEW_VERSION"
+      shell: bash
+
