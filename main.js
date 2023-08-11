@@ -206,12 +206,6 @@ function updateTrayMenu() {
             }
         },
         {
-            label: 'Check for updates',
-            click: () => {
-                shell.openExternal('https://github.com/Hybes/blitz-for-league-only/releases');
-            }
-        },
-        {
             label: `Version: ${appVersion}`,
             enabled: false
         },
