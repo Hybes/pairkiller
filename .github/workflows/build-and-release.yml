@@ -60,7 +60,7 @@ jobs:
       run: |
         $newVersion = $(node -p "require('./package.json').version")
         $changelogContent = Get-Content -Raw -Path ./changelog.md
-        $releaseFiles = Get-ChildItem -Path .\dist\ -Include *.exe,latest.yml -Recurse
+        $releaseFiles = Get-ChildItem -Path .\dist\ -Include *.exe,latest.yml -Recurse | Where-Object { $_.Name -ne 'elevate.exe' }
         $filePathsArray = @()
         foreach ($file in $releaseFiles) {
             $filePathsArray += $file.FullName
@@ -71,4 +71,5 @@ jobs:
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
 
