@@ -37,6 +37,10 @@ ipcRenderer.on('update-downloaded', (event, version) => {
       usageCollectionToggle.checked = value;
   });
 
+  ipcRenderer.on('no-update-available', () => {
+    alert("You are using the latest version of the application!");
+});
+
   usageCollectionToggle.addEventListener('change', () => {
     ipcRenderer.send('toggle-usage-collection', usageCollectionToggle.checked);
   });

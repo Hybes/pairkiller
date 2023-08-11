@@ -72,12 +72,37 @@ app.on('ready', () => {
     autoUpdater.checkForUpdatesAndNotify();
 });
 
+autoUpdater.setFeedURL({
+    provider: 'github',
+    repo: 'blitz-for-league-only',
+    owner: 'Hybes'
+});
+
+autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for update...');
+});
+
 autoUpdater.on('update-available', (info) => {
-    mainWindow.webContents.send('update-available', info.version);
+    console.log('Update available:', info);
+});
+
+autoUpdater.on('update-not-available', (info) => {
+    console.log('Update not available:', info);
+    if (mainWindow) {
+        mainWindow.webContents.send('no-update-available');
+    }
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('Error in auto-updater:', err);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+    console.log(`Downloaded ${progressObj.percent}%`);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-    mainWindow.webContents.send('update-downloaded', info.version);
+    console.log('Update downloaded:', info);
 });
 
 async function isTaskRunning(taskName) {
