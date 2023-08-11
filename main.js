@@ -6,9 +6,9 @@ const util = require('util');
 const fetch = require('node-fetch')
 const exec = util.promisify(require('child_process').exec);
 
-
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
+require('dotenv').config();
 
 const LEAGUE_CLIENT = 'LeagueClient.exe';
 const LEAGUE_GAME = 'League of Legends.exe';
@@ -48,12 +48,19 @@ ipcMain.on('toggle-usage-collection', (event, value) => {
 ipcMain.handle('get-usage-collection', (event) => {
     return config.anonymousUsage;
 });
-ipcMain.on('check-for-updates', () => {
-    autoUpdater.checkForUpdatesAndNotify();
-});
 ipcMain.on('install-update', () => {
     // This will quit and install the update, ensuring the app is updated
     autoUpdater.quitAndInstall();
+});
+ipcMain.on('check-for-updates', () => {
+    if (process.env.NODE_ENV === 'development') {
+        // Mock response for development
+        setTimeout(() => {
+            mainWindow.webContents.send('update-status', 'not-available');
+        }, 1000); // Simulate a delay for checking updates
+    } else {
+        autoUpdater.checkForUpdates();
+    }
 });
 
 app.whenReady().then(() => {
@@ -63,11 +70,9 @@ app.whenReady().then(() => {
     }
     sendWebhook();
 });
-
 app.on('window-all-closed', (e) => {
     e.preventDefault();
 });
-
 app.on('ready', () => {
     autoUpdater.checkForUpdatesAndNotify();
 });
@@ -77,32 +82,23 @@ autoUpdater.setFeedURL({
     repo: 'blitz-for-league-only',
     owner: 'Hybes'
 });
-
 autoUpdater.on('checking-for-update', () => {
     console.log('Checking for update...');
 });
-
 autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info);
+    mainWindow.webContents.send('update-status', 'available', info.version);
 });
-
-autoUpdater.on('update-not-available', (info) => {
-    console.log('Update not available:', info);
-    if (mainWindow) {
-        mainWindow.webContents.send('no-update-available');
-    }
+autoUpdater.on('update-downloaded', (info) => {
+    mainWindow.webContents.send('update-status', 'downloaded', info.version);
 });
-
+autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update-status', 'not-available');
+});
 autoUpdater.on('error', (err) => {
-    console.error('Error in auto-updater:', err);
+    mainWindow.webContents.send('update-status', 'error', err.message);
 });
-
 autoUpdater.on('download-progress', (progressObj) => {
     console.log(`Downloaded ${progressObj.percent}%`);
-});
-
-autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info);
 });
 
 async function isTaskRunning(taskName) {
@@ -122,7 +118,6 @@ async function isTaskRunning(taskName) {
         return false;
     }
 }
-
 async function ensureBlitzIsRunning() {
     const isBlitzRunning = await isTaskRunning(BLITZ_APP);
     if (!isBlitzRunning) {
@@ -133,7 +128,6 @@ async function ensureBlitzIsRunning() {
         });
     }
 }
-
 async function startMonitoring() {
     setInterval(async () => {
         if (monitoring) {
@@ -157,7 +151,6 @@ async function startMonitoring() {
         }
     }, 3000);
 }
-
 async function sendWebhook() {
     if (config.anonymousUsage) {
         try {
@@ -174,13 +167,11 @@ async function sendWebhook() {
         }
     }
 }
-
 function setupTray() {
     tray = new Tray(path.join(__dirname, 'icon.png'));
     updateTrayMenu();
     tray.on('click', openMainWindow);
 }
-
 function updateTrayMenu() {
     const appVersion = app.getVersion();
     const contextMenu = Menu.buildFromTemplate([
@@ -233,7 +224,6 @@ function updateTrayMenu() {
     ]);
     tray.setContextMenu(contextMenu);
 }
-
 function openMainWindow() {
     let mainWindow = new BrowserWindow({
         icon: path.join(__dirname, 'icon.png'),
