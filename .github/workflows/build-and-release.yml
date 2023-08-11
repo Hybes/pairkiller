@@ -54,18 +54,19 @@ jobs:
     - name: Install GitHub CLI
       if: env.GH_INSTALLED == 'false'
       run: choco install gh --install-arguments="'/l*v c:\gh_msi_install.log'"
-
-    - name: Create GitHub Release and Upload Exe
+    
+    - name: Create GitHub Release and Upload Artifacts
       if: env.VERSION_CHANGED == 'true'
       run: |
         $newVersion = $(node -p "require('./package.json').version")
         $changelogContent = Get-Content -Raw -Path ./changelog.md
-        $exeFiles = Get-ChildItem -Path .\dist\ -Filter *.exe
-        foreach ($file in $exeFiles) {
+        $releaseFiles = Get-ChildItem -Path .\dist\ -Include *.exe,latest.yml -Recurse
+        foreach ($file in $releaseFiles) {
             $filePaths += $file.FullName
         }
         gh release create "v$newVersion" $filePaths --title "v$newVersion" --notes "$changelogContent"
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
 
