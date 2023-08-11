@@ -14,6 +14,7 @@ const LEAGUE_CLIENT = 'LeagueClient.exe';
 const LEAGUE_GAME = 'League of Legends.exe';
 const BLITZ_APP = 'Blitz.exe';
 
+let mainWindow;
 let tray = null;
 let monitoring = true;
 let config = {
@@ -152,7 +153,7 @@ async function sendWebhook() {
 function setupTray() {
     tray = new Tray(path.join(__dirname, 'icon.png'));
     updateTrayMenu();
-    tray.on('click', openAboutWindow);
+    tray.on('click', openMainWindow);
 }
 
 function updateTrayMenu() {
@@ -185,7 +186,7 @@ function updateTrayMenu() {
         {
             label: 'About',
             click: () => {
-                openAboutWindow();
+                openMainWindow();
             }
         },
         {
@@ -208,8 +209,8 @@ function updateTrayMenu() {
     tray.setContextMenu(contextMenu);
 }
 
-function openAboutWindow() {
-    let aboutWindow = new BrowserWindow({
+function openMainWindow() {
+    let mainWindow = new BrowserWindow({
         icon: path.join(__dirname, 'icon.png'),
         autoHideMenuBar: true,
         width: 700,
@@ -222,5 +223,5 @@ function openAboutWindow() {
         resizable: false,
         title: "About"
     });
-    aboutWindow.loadFile('about.html');
+    mainWindow.loadFile('about.html');
 }
