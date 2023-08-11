@@ -65,8 +65,9 @@ jobs:
         foreach ($file in $releaseFiles) {
             $filePathsArray += $file.FullName
         }
-        $filePathsStr = $filePathsArray -join " "
-        gh release create "v$newVersion" $filePathsStr --title "v$newVersion" --notes "$changelogContent"
+        $ghArgs = @('release', 'create', "v$newVersion", '--title', "v$newVersion", '--notes', "$changelogContent")
+        $ghArgs += $filePathsArray
+        gh @ghArgs
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GH_TOKEN }}
