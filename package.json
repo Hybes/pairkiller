@@ -1,7 +1,7 @@
 {
   "name": "blitz-for-league-only",
   "productName": "Blitz for League Only",
-  "version": null,
+  "version": "1.4.1",
   "description": "Open and Close Blitz based on the status of League Client",
   "main": "main.js",
   "scripts": {
