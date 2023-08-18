@@ -17,6 +17,7 @@ const BLITZ_APP = 'Blitz.exe';
 let mainWindow;
 let tray = null;
 let monitoring = true;
+let updateWindow;
 let config = {
     blitzPath: defaultBlitzPath,
     anonymousUsage: true
@@ -63,41 +64,45 @@ ipcMain.on('check-for-updates', () => {
     }
 });
 
-app.whenReady().then(() => {
-    setupTray();
-    if (monitoring) {
-        startMonitoring();
-    }
-    sendWebhook();
-});
-app.on('window-all-closed', (e) => {
-    e.preventDefault();
-});
-app.on('ready', () => {
-    autoUpdater.checkForUpdatesAndNotify();
-});
-
 autoUpdater.setFeedURL({
     provider: 'github',
     repo: 'blitz-for-league-only',
     owner: 'Hybes'
 });
 autoUpdater.on('checking-for-update', () => {
+    openUpdateWindow();
     console.log('Checking for update...');
 });
 autoUpdater.on('update-available', (info) => {
-    mainWindow.webContents.send('update-status', 'available', info.version);
+    if (updateWindow) {
+        updateWindow.webContents.send('update-status', 'Update available. Downloading...');
+    }
 });
 autoUpdater.on('update-downloaded', (info) => {
-    mainWindow.webContents.send('update-status', 'downloaded', info.version);
+    if (updateWindow) {
+        updateWindow.webContents.send('update-status', 'Update downloaded. Installing...');
+    }
+    setTimeout(() => {
+        autoUpdater.quitAndInstall();
+    }, 2000);
 });
 autoUpdater.on('update-not-available', () => {
-    mainWindow.webContents.send('update-status', 'not-available');
+    if (updateWindow) {
+        updateWindow.webContents.send('update-status', 'You have the latest version.');
+        setTimeout(() => {
+            updateWindow.close();
+        }, 2000);
+    }
 });
 autoUpdater.on('error', (err) => {
-    mainWindow.webContents.send('update-status', 'error', err.message);
+    if (updateWindow) {
+        updateWindow.webContents.send('update-status', 'Error: ' + err.message);
+    }
 });
 autoUpdater.on('download-progress', (progressObj) => {
+    if (updateWindow) {
+        updateWindow.webContents.send('update-progress', progressObj.percent);
+    }
     console.log(`Downloaded ${progressObj.percent}%`);
 });
 
@@ -167,6 +172,15 @@ async function sendWebhook() {
         }
     }
 }
+async function killLeagueProcesses() {
+    try {
+        await exec('taskkill /im "League of Legends.exe" /f');
+        await exec('taskkill /im "LeagueClient.exe" /f');
+        console.log("Successfully killed League processes.");
+    } catch (error) {
+        console.error("Error killing League processes:", error);
+    }
+}
 function setupTray() {
     tray = new Tray(path.join(__dirname, 'icon.png'));
     updateTrayMenu();
@@ -186,6 +200,10 @@ function updateTrayMenu() {
                 }
                 updateTrayMenu();
             }
+        },
+        {
+            label: 'Kill League',
+            click: killLeagueProcesses
         },
         {
             label: 'Start on Boot',
@@ -218,6 +236,16 @@ function updateTrayMenu() {
     ]);
     tray.setContextMenu(contextMenu);
 }
+function openUpdateWindow() {
+    updateWindow = new BrowserWindow({
+        width: 400,
+        height: 200,
+        autoHideMenuBar: true,
+        resizable: false,
+        title: "Update"
+    });
+    updateWindow.loadFile('update.html');
+}
 function openMainWindow() {
     let mainWindow = new BrowserWindow({
         icon: path.join(__dirname, 'icon.png'),
@@ -234,3 +262,17 @@ function openMainWindow() {
     });
     mainWindow.loadFile('about.html');
 }
+
+app.whenReady().then(() => {
+    setupTray();
+    if (monitoring) {
+        startMonitoring();
+    }
+    sendWebhook();
+});
+app.on('window-all-closed', (e) => {
+    e.preventDefault();
+});
+app.on('ready', () => {
+    autoUpdater.checkForUpdatesAndNotify();
+});

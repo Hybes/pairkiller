@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Update</title>
+    <script>
+      const { ipcRenderer } = require('electron');
+
+      ipcRenderer.on('update-status', (event, message) => {
+          document.getElementById('update-message').textContent = message;
+      });
+
+      ipcRenderer.on('update-progress', (event, progress) => {
+          document.getElementById('update-progress').value = progress;
+      });
+  </script>
+
+</head>
+<body>
+    <h1>Update Status</h1>
+    <p id="update-message">Checking for updates...</p>
+    <progress id="update-progress" max="100" value="0"></progress>
+</body>
+</html>
