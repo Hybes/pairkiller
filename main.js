@@ -241,7 +241,7 @@ function updateTrayMenu() {
                         mainWindow.webContents.send('update-status', 'not-available');
                     }, 1000); // Simulate a delay for checking updates
                 } else {
-                    openUpdateWindow();
+                    autoUpdater.checkForUpdates();
                 }
             }
         },
