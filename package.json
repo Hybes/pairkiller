@@ -19,7 +19,7 @@
       }
     ],
     "win": {
-      "artifactName": "Blitz for League Only Installer ${version}.${ext}",
+      "artifactName": "Blitz-for-League-Only-Installer-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
