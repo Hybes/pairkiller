@@ -2,22 +2,22 @@
 <html>
 <head>
     <title>Update</title>
-    <script>
-      const { ipcRenderer } = require('electron');
+        <script>
+        const { ipcRenderer } = require('electron');
 
-      ipcRenderer.on('update-status', (event, message) => {
-          document.getElementById('update-message').textContent = message;
-      });
+        ipcRenderer.on('update-status', (event, message) => {
+            document.getElementById('update-message').textContent = message;
+        });
 
-      ipcRenderer.on('update-progress', (event, progress) => {
-          document.getElementById('update-progress').value = progress;
-      });
-  </script>
-
+        ipcRenderer.on('update-progress', (event, progress) => {
+            document.getElementById('update-progress').value = progress;
+        });
+    </script>
+    <link rel="stylesheet" href="output.css">
 </head>
-<body>
-    <h1>Update Status</h1>
-    <p id="update-message">Checking for updates...</p>
+<body class="h-full w-full flex flex-col justify-center items-center bg-stone-900 text-stone-100">
+    <h1 class="w-full text-center p-4 font-semibold text-xl">Update Status</h1>
+    <p class="text-md text-center" id="update-message">Checking for updates...</p>
     <progress id="update-progress" max="100" value="0"></progress>
 </body>
 </html>
