@@ -6,16 +6,22 @@
     window.ipcRenderer.on('update-status', (event, message) => {
         document.getElementById('update-message').textContent = message;
     });
-
     window.ipcRenderer.on('update-progress', (event, progress) => {
         document.getElementById('update-progress').value = progress;
     });
+
+    function closeUpdateWindow() {
+        ipcRenderer.send('close-update-window');
+    }
     </script>
     <link rel="stylesheet" href="output.css">
 </head>
-<body class="h-full w-full flex flex-col justify-center items-center bg-stone-900 text-stone-100">
+<body class="h-[190px] w-full flex flex-col justify-center items-center bg-stone-900 text-stone-100">
+    <div class="absolute top-2 right-4 w-6 h-6 bg-red-700 hover:bg-red-600 rounded-xl cursor-pointer flex items-center justify-center" onclick="closeUpdateWindow()">
+        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" d="M20 20L4 4m16 0L4 20"/></svg>
+    </div>
     <h1 class="w-full text-center p-4 font-semibold text-xl">Update Status</h1>
-    <p class="text-md text-center" id="update-message">Checking for updates...</p>
-    <progress id="update-progress" max="100" value="0"></progress>
+    <p class="text-md text-center p-4" id="update-message">Checking for updates...</p>
+    <progress class="p-4" id="update-progress" max="100" value="0"></progress>
 </body>
 </html>

@@ -63,6 +63,11 @@ ipcMain.on('check-for-updates', () => {
         autoUpdater.checkForUpdates();
     }
 });
+ipcMain.on('close-update-window', () => {
+    if (updateWindow) {
+        updateWindow.close();
+    }
+});
 
 autoUpdater.setFeedURL({
     provider: 'github',
@@ -202,10 +207,6 @@ function updateTrayMenu() {
             }
         },
         {
-            label: 'Kill League',
-            click: killLeagueProcesses
-        },
-        {
             label: 'Start on Boot',
             type: 'checkbox',
             checked: app.getLoginItemSettings().openAtLogin,
@@ -218,6 +219,10 @@ function updateTrayMenu() {
             }
         },
         {
+            label: 'Force Kill League',
+            click: killLeagueProcesses
+        },
+        {
             label: 'About',
             click: () => {
                 openMainWindow();
@@ -226,6 +231,19 @@ function updateTrayMenu() {
         {
             label: `Version: ${appVersion}`,
             enabled: false
+        },
+        {
+            label: 'Check for Updates',
+            click: () => {
+                if (process.env.NODE_ENV === 'development') {
+                    // Mock response for development
+                    setTimeout(() => {
+                        mainWindow.webContents.send('update-status', 'not-available');
+                    }, 1000); // Simulate a delay for checking updates
+                } else {
+                    openUpdateWindow();
+                }
+            }
         },
         {
             label: 'Quit',
