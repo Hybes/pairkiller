@@ -2,16 +2,14 @@
 <html>
 <head>
     <title>Update</title>
-        <script>
-        const { ipcRenderer } = require('electron');
+    <script>
+    window.ipcRenderer.on('update-status', (event, message) => {
+        document.getElementById('update-message').textContent = message;
+    });
 
-        ipcRenderer.on('update-status', (event, message) => {
-            document.getElementById('update-message').textContent = message;
-        });
-
-        ipcRenderer.on('update-progress', (event, progress) => {
-            document.getElementById('update-progress').value = progress;
-        });
+    window.ipcRenderer.on('update-progress', (event, progress) => {
+        document.getElementById('update-progress').value = progress;
+    });
     </script>
     <link rel="stylesheet" href="output.css">
 </head>

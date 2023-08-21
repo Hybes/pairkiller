@@ -241,7 +241,13 @@ function openUpdateWindow() {
         width: 400,
         height: 200,
         autoHideMenuBar: true,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+            preload: path.join(__dirname, 'preload.js'),
+        },
         resizable: false,
+        frame: false,
         title: "Update"
     });
     updateWindow.loadFile('update.html');
