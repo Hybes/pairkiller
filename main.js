@@ -89,14 +89,14 @@ autoUpdater.on('update-downloaded', (info) => {
     }
     setTimeout(() => {
         autoUpdater.quitAndInstall();
-    }, 2000);
+    }, 500);
 });
 autoUpdater.on('update-not-available', () => {
     if (updateWindow) {
         updateWindow.webContents.send('update-status', 'You have the latest version.');
         setTimeout(() => {
             updateWindow.close();
-        }, 2000);
+        }, 500);
     }
 });
 autoUpdater.on('error', (err) => {

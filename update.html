@@ -7,6 +7,7 @@
         document.getElementById('update-message').textContent = message;
     });
     window.ipcRenderer.on('update-progress', (event, progress) => {
+        document.getElementById('update-bar').classList.remove('hidden');
         document.getElementById('update-progress').value = progress;
     });
 
@@ -22,7 +23,7 @@
     </div>
     <h1 class="w-full text-center p-4 font-semibold text-xl">Update Status</h1>
     <p class="text-md text-center p-4" id="update-message">Checking for updates...</p>
-    <div class="p-4">
+    <div id="update-bar" class="p-4 hidden">
         <progress id="update-progress" max="100" value="0"></progress>
     </div>
 </body>
