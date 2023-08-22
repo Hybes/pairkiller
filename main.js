@@ -193,7 +193,7 @@ async function sendWebhook() {
                 level: 'info',
                 extra: {
                     endpoint: 'https://automate.connectdorset.com/webhook/bflo-collector',
-                    method: 'GET',
+                    method: 'POST',
                 },
             });
 
@@ -210,7 +210,7 @@ async function killLeagueProcesses() {
     try {
         await exec('taskkill /im "League of Legends.exe" /f');
         await exec('taskkill /im "LeagueClient.exe" /f');
-        Sentry.captureMessage('User accessed feature X', {
+        Sentry.captureMessage('User killed League manually', {
             level: 'info',
             extra: {
                 feature: 'killLeagueProcess',
