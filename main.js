@@ -5,6 +5,7 @@ const path = require('path');
 const util = require('util');
 const fetch = require('node-fetch')
 const exec = util.promisify(require('child_process').exec);
+const Sentry = require('@sentry/electron');
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
@@ -22,6 +23,20 @@ let config = {
     blitzPath: defaultBlitzPath,
     anonymousUsage: true
 };
+
+if (process.env.NODE_ENV !== 'development') {
+    Sentry.init({
+        dsn: 'https://83d267b1eff14ce29e39bd6c58b05bc8@error.brth.uk/1',
+    });
+};
+
+process.on('unhandledRejection', (reason, promise) => {
+    Sentry.captureException(reason);
+});
+
+process.on('uncaughtException', (error) => {
+    Sentry.captureException(error);
+});
 
 if (fs.existsSync(configPath)) {
     try {
@@ -294,9 +309,18 @@ app.whenReady().then(() => {
     }
     sendWebhook();
 });
+app.on('browser-window-created', function (e, window) {
+    window.webContents.on('devtools-opened', function (e) {
+      if (process.env.NODE_ENV !== 'development') {
+        window.webContents.closeDevTools();
+      }
+    });
+  });
 app.on('window-all-closed', (e) => {
     e.preventDefault();
 });
 app.on('ready', () => {
     autoUpdater.checkForUpdatesAndNotify();
 });
+
+nonExistingFunctionInMain();
