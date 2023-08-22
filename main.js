@@ -190,7 +190,7 @@ async function sendWebhook() {
                 body: JSON.stringify({ event: 'app-started' })
             });
             Sentry.captureMessage('Webhook Sent for Stats', {
-                level: Sentry.Severity.Info,
+                level: 'info',
                 extra: {
                     endpoint: 'https://automate.connectdorset.com/webhook/bflo-collector',
                     method: 'GET',
@@ -211,7 +211,7 @@ async function killLeagueProcesses() {
         await exec('taskkill /im "League of Legends.exe" /f');
         await exec('taskkill /im "LeagueClient.exe" /f');
         Sentry.captureMessage('User accessed feature X', {
-            level: Sentry.Severity.Info,
+            level: 'info',
             extra: {
                 feature: 'killLeagueProcess',
             },
@@ -254,7 +254,7 @@ function updateTrayMenu() {
                 });
                 updateTrayMenu();
                 Sentry.captureMessage('User accessed feature X', {
-                    level: Sentry.Severity.Info,
+                    level: 'info',
                     extra: {
                         feature: 'toggleStartOnBoot',
                     },
