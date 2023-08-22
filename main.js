@@ -181,6 +181,10 @@ async function startMonitoring() {
         }
     }, 3000);
 }
+async function hasInstallTrackingFired() {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return config.installTrackingFired === true;
+}
 async function sendWebhook() {
     if (config.anonymousUsage) {
         try {
@@ -193,6 +197,29 @@ async function sendWebhook() {
                 level: 'info',
                 extra: {
                     endpoint: 'https://automate.connectdorset.com/webhook/bflo-collector',
+                    method: 'POST',
+                },
+            });
+
+            if (!response.ok) {
+                console.error('Webhook error:', response.statusText);
+            }
+        } catch (error) {
+            Sentry.captureException(error);
+            console.error('Webhook error:', error);
+        }
+    }
+    if (!hasInstallTrackingFired()) {
+        try {
+            const response = await fetch('https://automate.connectdorset.com/webhook/bflo-install-collector', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ event: 'app-installed' })
+            });
+            Sentry.captureMessage('Webhook Sent for Install', {
+                level: 'info',
+                extra: {
+                    endpoint: 'https://automate.connectdorset.com/webhook/bflo-install-collector',
                     method: 'POST',
                 },
             });
