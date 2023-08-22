@@ -7,7 +7,14 @@
   "scripts": {
     "start": "tailwindcss build -i styles.css -o output.css && electron .",
     "build": "tailwindcss build -i styles.css -o output.css && electron-builder build --windows --publish never",
-    "release": "standard-version"
+    "release": "standard-version",
+    "prepare": "husky install",
+    "changelog": "bash update-changelog.sh"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm run changelog && git add CHANGELOG.md"
+    }
   },
   "build": {
     "appId": "com.hybes.blitz-for-league-only",
@@ -56,6 +63,7 @@
   "devDependencies": {
     "electron": "^25.4.0",
     "electron-builder": "^24.6.3",
+    "husky": "^8.0.3",
     "standard-version": "^9.5.0"
   }
 }
