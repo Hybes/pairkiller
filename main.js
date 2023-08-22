@@ -116,6 +116,7 @@ autoUpdater.on('update-not-available', () => {
 });
 autoUpdater.on('error', (err) => {
     if (updateWindow) {
+        Sentry.captureException(error);
         updateWindow.webContents.send('update-status', 'Error: ' + err.message);
     }
 });
@@ -128,6 +129,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 async function isTaskRunning(taskName) {
     if (!taskName) {
+        Sentry.captureException(error);
         console.error('Error: taskName is not provided or is undefined');
         return false;
     }
@@ -139,6 +141,7 @@ async function isTaskRunning(taskName) {
         if (!error.stdout || !error.stderr) {
             return false;
         }
+        Sentry.captureException(error);
         console.error(`Error checking task ${taskName}:`, error);
         return false;
     }
@@ -148,6 +151,7 @@ async function ensureBlitzIsRunning() {
     if (!isBlitzRunning) {
         exec(`"${config.blitzPath}"`, (error) => {
             if (error) {
+                Sentry.captureException(error);
                 console.error("Error starting Blitz:", error);
             }
         });
@@ -171,6 +175,7 @@ async function startMonitoring() {
                     });
                 }
             } catch (error) {
+                Sentry.captureException(error);
                 console.error("Error during monitoring:", error);
             }
         }
@@ -184,10 +189,19 @@ async function sendWebhook() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ event: 'app-started' })
             });
+            Sentry.captureMessage('Webhook Sent for Stats', {
+                level: Sentry.Severity.Info,
+                extra: {
+                    endpoint: 'https://automate.connectdorset.com/webhook/bflo-collector',
+                    method: 'GET',
+                },
+            });
+
             if (!response.ok) {
                 console.error('Webhook error:', response.statusText);
             }
         } catch (error) {
+            Sentry.captureException(error);
             console.error('Webhook error:', error);
         }
     }
@@ -196,8 +210,16 @@ async function killLeagueProcesses() {
     try {
         await exec('taskkill /im "League of Legends.exe" /f');
         await exec('taskkill /im "LeagueClient.exe" /f');
+        Sentry.captureMessage('User accessed feature X', {
+            level: Sentry.Severity.Info,
+            extra: {
+                feature: 'killLeagueProcess',
+            },
+        });
+
         console.log("Successfully killed League processes.");
     } catch (error) {
+        Sentry.captureException(error);
         console.error("Error killing League processes:", error);
     }
 }
@@ -231,6 +253,12 @@ function updateTrayMenu() {
                     openAtLogin: startOnBoot
                 });
                 updateTrayMenu();
+                Sentry.captureMessage('User accessed feature X', {
+                    level: Sentry.Severity.Info,
+                    extra: {
+                        feature: 'toggleStartOnBoot',
+                    },
+                });
             }
         },
         {
@@ -286,7 +314,7 @@ function openUpdateWindow() {
     updateWindow.loadFile('update.html');
 }
 function openMainWindow() {
-    let mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         icon: path.join(__dirname, 'icon.png'),
         autoHideMenuBar: true,
         width: 700,
@@ -322,5 +350,3 @@ app.on('window-all-closed', (e) => {
 app.on('ready', () => {
     autoUpdater.checkForUpdatesAndNotify();
 });
-
-nonExistingFunctionInMain();
