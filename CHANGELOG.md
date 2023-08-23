@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.6.8](https://github.com/Hybes/blitz-for-league-only/compare/v1.6.7...v1.6.8) (2023-08-23)
+
 ### [1.6.7](https://github.com/Hybes/blitz-for-league-only/compare/v1.6.6...v1.6.7) (2023-08-22)
 
 ### [1.6.6](https://github.com/Hybes/blitz-for-league-only/compare/v1.6.5...v1.6.6) (2023-08-22)
