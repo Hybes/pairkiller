@@ -21,7 +21,9 @@ let monitoring = true;
 let updateWindow;
 let config = {
     blitzPath: defaultBlitzPath,
-    anonymousUsage: true
+    appInstalled: false,
+    anonymousUsage: true,
+    version: app.getVersion()
 };
 
 if (process.env.NODE_ENV !== 'development') {
@@ -181,10 +183,6 @@ async function startMonitoring() {
         }
     }, 3000);
 }
-async function hasInstallTrackingFired() {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    return config.installTrackingFired === true;
-}
 async function sendWebhook() {
     if (config.anonymousUsage) {
         try {
@@ -209,7 +207,7 @@ async function sendWebhook() {
             console.error('Webhook error:', error);
         }
     }
-    if (!hasInstallTrackingFired()) {
+    if (config.appInstalled) {
         try {
             const response = await fetch('https://automate.connectdorset.com/webhook/bflo-install-collector', {
                 method: 'POST',
@@ -223,7 +221,7 @@ async function sendWebhook() {
                     method: 'POST',
                 },
             });
-
+            config.appInstalled = false;
             if (!response.ok) {
                 console.error('Webhook error:', response.statusText);
             }
@@ -243,7 +241,6 @@ async function killLeagueProcesses() {
                 feature: 'killLeagueProcess',
             },
         });
-
         console.log("Successfully killed League processes.");
     } catch (error) {
         Sentry.captureException(error);
