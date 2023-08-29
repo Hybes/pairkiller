@@ -131,7 +131,6 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 async function isTaskRunning(taskName) {
     if (!taskName) {
-        Sentry.captureException(error);
         console.error('Error: taskName is not provided or is undefined');
         return false;
     }
@@ -143,7 +142,6 @@ async function isTaskRunning(taskName) {
         if (!error.stdout || !error.stderr) {
             return false;
         }
-        Sentry.captureException(error);
         console.error(`Error checking task ${taskName}:`, error);
         return false;
     }
@@ -153,7 +151,6 @@ async function ensureBlitzIsRunning() {
     if (!isBlitzRunning) {
         exec(`"${config.blitzPath}"`, (error) => {
             if (error) {
-                Sentry.captureException(error);
                 console.error("Error starting Blitz:", error);
             }
         });
@@ -177,7 +174,6 @@ async function startMonitoring() {
                     });
                 }
             } catch (error) {
-                Sentry.captureException(error);
                 console.error("Error during monitoring:", error);
             }
         }
@@ -243,7 +239,6 @@ async function killLeagueProcesses() {
         });
         console.log("Successfully killed League processes.");
     } catch (error) {
-        Sentry.captureException(error);
         console.error("Error killing League processes:", error);
     }
 }
