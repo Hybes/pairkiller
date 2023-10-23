@@ -182,7 +182,7 @@ async function startMonitoring() {
 async function sendWebhook() {
     if (config.anonymousUsage) {
         try {
-            const response = await fetch('https://automate.connectdorset.com/webhook/bflo-collector', {
+            const response = await fetch('https://api.brth.uk/v2/bflo-collector', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ event: 'app-started' })
@@ -190,7 +190,7 @@ async function sendWebhook() {
             Sentry.captureMessage('Webhook Sent for Stats', {
                 level: 'info',
                 extra: {
-                    endpoint: 'https://automate.connectdorset.com/webhook/bflo-collector',
+                    endpoint: 'https://api.brth.uk/v2/bflo-collector',
                     method: 'POST',
                 },
             });
@@ -205,7 +205,7 @@ async function sendWebhook() {
     }
     if (config.appInstalled) {
         try {
-            const response = await fetch('https://automate.connectdorset.com/webhook/bflo-install-collector', {
+            const response = await fetch('https://api.brth.uk/v2/bflo-install-collector', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ event: 'app-installed' })
@@ -213,7 +213,7 @@ async function sendWebhook() {
             Sentry.captureMessage('Webhook Sent for Install', {
                 level: 'info',
                 extra: {
-                    endpoint: 'https://automate.connectdorset.com/webhook/bflo-install-collector',
+                    endpoint: 'https://api.brth.uk/v2/bflo-install-collector',
                     method: 'POST',
                 },
             });
