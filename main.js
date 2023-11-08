@@ -7,6 +7,8 @@ const fetch = require('node-fetch')
 const exec = util.promisify(require('child_process').exec);
 const Sentry = require('@sentry/electron');
 const { send } = require('process');
+const os = require('os');
+const screen = require('electron').screen;
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
@@ -197,7 +199,7 @@ async function sendTracking(data, name) {
                         "hostname": os.hostname(),
                         "language": "en-GB",
                         "referrer": os.userInfo().username,
-                        "screen": `${screen.width}x${screen.height}`,
+                        "screen": `${screen.getPrimaryDisplay().workAreaSize.width}x${screen.getPrimaryDisplay().workAreaSize.height}`,
                         "title": name,
                         "url": data,
                         "website": "69393462-fdb6-46e8-a1e9-9c6fc241fff6",
@@ -207,7 +209,7 @@ async function sendTracking(data, name) {
                 })
             });
 
-            if (!response.ok) {
+            if (response.error) {
                 Sentry.captureException(response.statusText);
             }
         } catch (error) {
