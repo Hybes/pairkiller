@@ -186,10 +186,25 @@ async function startMonitoring() {
 async function sendTracking(data, name) {
     if (config.anonymousUsage) {
         try {
-            const response = await fetch('https://views.cnnct.uk/api/event', {
+            const response = await fetch('https://view.cnnct.uk/api/send', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({"name":"pageview","url":data,"domain":"bflo.com"})
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36 Electron/${process.versions.electron}`
+                },
+                body: JSON.stringify({
+                    "payload": {
+                        "hostname": os.hostname(),
+                        "language": "en-GB",
+                        "referrer": os.userInfo().username,
+                        "screen": `${screen.width}x${screen.height}`,
+                        "title": name,
+                        "url": data,
+                        "website": "69393462-fdb6-46e8-a1e9-9c6fc241fff6",
+                        "name": name
+                    },
+                    "type": "event"
+                })
             });
 
             if (!response.ok) {
