@@ -6,6 +6,7 @@ const util = require('util');
 const fetch = require('node-fetch')
 const exec = util.promisify(require('child_process').exec);
 const Sentry = require('@sentry/electron');
+const { send } = require('process');
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
@@ -46,11 +47,10 @@ if (fs.existsSync(configPath)) {
         const loadedConfig = JSON.parse(fileData);
         config = { ...config, ...loadedConfig };
     } catch (error) {
-        console.error('Error reading configuration:', error);
+        Sentry.captureException(error);
     }
 }
 else {
-    // It's the first time the app is being started. Set it to start on boot by default.
     app.setLoginItemSettings({
         openAtLogin: true
     });
@@ -92,15 +92,17 @@ autoUpdater.setFeedURL({
     owner: 'Hybes'
 });
 autoUpdater.on('checking-for-update', () => {
+    sendTracking('/auto-update', 'Auto Update');
     openUpdateWindow();
-    console.log('Checking for update...');
 });
 autoUpdater.on('update-available', (info) => {
+    sendTracking('/update-available', 'Update Available');
     if (updateWindow) {
         updateWindow.webContents.send('update-status', 'Update available. Downloading...');
     }
 });
 autoUpdater.on('update-downloaded', (info) => {
+    sendTracking('/update-downloaded', 'Update Downloaded');
     if (updateWindow) {
         updateWindow.webContents.send('update-status', 'Update downloaded. Installing...');
     }
@@ -109,6 +111,7 @@ autoUpdater.on('update-downloaded', (info) => {
     }, 500);
 });
 autoUpdater.on('update-not-available', () => {
+    sendTracking('/update-not-available', 'Update Not Available');
     if (updateWindow) {
         updateWindow.webContents.send('update-status', 'You have the latest version.');
         setTimeout(() => {
@@ -117,6 +120,7 @@ autoUpdater.on('update-not-available', () => {
     }
 });
 autoUpdater.on('error', (err) => {
+    sendTracking('/update-error', 'Update Error');
     if (updateWindow) {
         Sentry.captureException(error);
         updateWindow.webContents.send('update-status', 'Error: ' + err.message);
@@ -131,7 +135,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 async function isTaskRunning(taskName) {
     if (!taskName) {
-        console.error('Error: taskName is not provided or is undefined');
+        Sentry.captureException('Config is malformed, taskName is missing');
         return false;
     }
 
@@ -142,7 +146,7 @@ async function isTaskRunning(taskName) {
         if (!error.stdout || !error.stderr) {
             return false;
         }
-        console.error(`Error checking task ${taskName}:`, error);
+        Sentry.captureException(error);
         return false;
     }
 }
@@ -151,7 +155,7 @@ async function ensureBlitzIsRunning() {
     if (!isBlitzRunning) {
         exec(`"${config.blitzPath}"`, (error) => {
             if (error) {
-                console.error("Error starting Blitz:", error);
+                Sentry.captureException(error);
             }
         });
     }
@@ -169,77 +173,40 @@ async function startMonitoring() {
                 } else if (!isLeagueClientRunning && !isLeagueOfLegendsRunning && isBlitzRunning) {
                     exec('taskkill /im Blitz.exe /f', (errorKill) => {
                         if (errorKill) {
-                            console.error("Error killing Blitz:", errorKill);
+                            Sentry.captureException(errorKill);
                         }
                     });
                 }
             } catch (error) {
-                console.error("Error during monitoring:", error);
+                Sentry.captureException(error);
             }
         }
     }, 3000);
 }
-async function sendWebhook() {
+async function sendTracking(data, name) {
     if (config.anonymousUsage) {
         try {
-            const response = await fetch('https://api.brth.uk/v2/bflo-collector', {
+            const response = await fetch('https://views.cnnct.uk/api/event', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ event: 'app-started' })
-            });
-            Sentry.captureMessage('Webhook Sent for Stats', {
-                level: 'info',
-                extra: {
-                    endpoint: 'https://api.brth.uk/v2/bflo-collector',
-                    method: 'POST',
-                },
+                body: JSON.stringify({"name":"pageview","url":data,"domain":"bflo.com"})
             });
 
             if (!response.ok) {
-                console.error('Webhook error:', response.statusText);
+                Sentry.captureException(response.statusText);
             }
         } catch (error) {
             Sentry.captureException(error);
-            console.error('Webhook error:', error);
-        }
-    }
-    if (config.appInstalled) {
-        try {
-            const response = await fetch('https://api.brth.uk/v2/bflo-install-collector', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ event: 'app-installed' })
-            });
-            Sentry.captureMessage('Webhook Sent for Install', {
-                level: 'info',
-                extra: {
-                    endpoint: 'https://api.brth.uk/v2/bflo-install-collector',
-                    method: 'POST',
-                },
-            });
-            config.appInstalled = false;
-            if (!response.ok) {
-                console.error('Webhook error:', response.statusText);
-            }
-        } catch (error) {
-            Sentry.captureException(error);
-            console.error('Webhook error:', error);
         }
     }
 }
+
 async function killLeagueProcesses() {
     try {
         await exec('taskkill /im "League of Legends.exe" /f');
         await exec('taskkill /im "LeagueClient.exe" /f');
-        Sentry.captureMessage('User killed League manually', {
-            level: 'info',
-            extra: {
-                feature: 'killLeagueProcess',
-            },
-        });
-        console.log("Successfully killed League processes.");
     } catch (error) {
-        console.error("Error killing League processes:", error);
+        Sentry.captureException(error);
     }
 }
 function setupTray() {
@@ -255,6 +222,7 @@ function updateTrayMenu() {
             type: 'checkbox',
             checked: monitoring,
             click: () => {
+                sendTracking('/toggle-monitoring', 'Monitoring Toggle');
                 monitoring = !monitoring;
                 if (monitoring) {
                     startMonitoring();
@@ -267,26 +235,25 @@ function updateTrayMenu() {
             type: 'checkbox',
             checked: app.getLoginItemSettings().openAtLogin,
             click: () => {
+                sendTracking('/toggle-start-on-boot', 'Start on Boot Toggle');
                 const startOnBoot = !app.getLoginItemSettings().openAtLogin;
                 app.setLoginItemSettings({
                     openAtLogin: startOnBoot
                 });
                 updateTrayMenu();
-                Sentry.captureMessage('User accessed feature X', {
-                    level: 'info',
-                    extra: {
-                        feature: 'toggleStartOnBoot',
-                    },
-                });
             }
         },
         {
             label: 'Force Kill League',
-            click: killLeagueProcesses
+            click: () => {
+                sendTracking('/force-kill-league', 'Force Kill League');
+                killLeagueProcesses();
+            },
         },
         {
             label: 'About',
             click: () => {
+                sendTracking('/about', 'About');
                 openMainWindow();
             }
         },
@@ -297,6 +264,7 @@ function updateTrayMenu() {
         {
             label: 'Check for Updates',
             click: () => {
+                sendTracking('/check-for-updates', 'Check for Updates');
                 if (process.env.NODE_ENV === 'development') {
                     // Mock response for development
                     setTimeout(() => {
@@ -310,6 +278,7 @@ function updateTrayMenu() {
         {
             label: 'Quit',
             click: () => {
+                sendTracking('/quit', 'Quit');
                 app.quit();
             }
         }
@@ -351,10 +320,10 @@ function openMainWindow() {
 
 app.whenReady().then(() => {
     setupTray();
+    sendTracking('/app-open', 'App Open');
     if (monitoring) {
         startMonitoring();
     }
-    sendWebhook();
 });
 app.on('browser-window-created', function (e, window) {
     window.webContents.on('devtools-opened', function (e) {
