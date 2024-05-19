@@ -95,10 +95,11 @@ autoUpdater.setFeedURL({
 });
 autoUpdater.on('checking-for-update', () => {
     sendTracking('/auto-update', 'Auto Update');
-    openUpdateWindow();
+    // openUpdateWindow();
 });
 autoUpdater.on('update-available', (info) => {
     sendTracking('/update-available', 'Update Available');
+    openUpdateWindow();
     if (updateWindow) {
         updateWindow.webContents.send('update-status', 'Update available. Downloading...');
     }
