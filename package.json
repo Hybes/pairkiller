@@ -1,7 +1,7 @@
 {
   "name": "pairkiller",
   "productName": "Pairkiller",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A flexible app monitoring and control system",
   "main": "main.js",
   "scripts": {
