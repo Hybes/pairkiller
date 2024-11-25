@@ -8,6 +8,8 @@ on:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
     steps:
     - name: Checkout repository
@@ -69,7 +71,3 @@ jobs:
         $ghArgs += $filePathsArray
         gh @ghArgs
       shell: pwsh
-      env:
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
-
