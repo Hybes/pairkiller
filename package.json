@@ -9,6 +9,7 @@
     "build": "npm run build:css && electron-builder",
     "watch:css": "npx tailwindcss -i ./styles.css -o ./output.css --watch",
     "build:css": "npx tailwindcss -i ./styles.css -o ./output.css",
+    "dev": "concurrently \"npm run watch:css\" \"electron .\"",
     "bump": "standard-version"
   },
   "build": {
@@ -48,14 +49,14 @@
     "dotenv": "^16.4.5",
     "electron-context-menu": "^4.0.4",
     "electron-updater": "^6.3.9",
-    "node-fetch": "^3.3.2",
-    "npm-check-updates": "^17.1.11",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.15"
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
     "electron": "^25.0.0",
     "electron-builder": "^24.4.0",
-    "standard-version": "^9.5.0"
+    "standard-version": "^9.5.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15"
   }
 }

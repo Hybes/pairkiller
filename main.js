@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, Notification, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -83,6 +83,7 @@ let monitoring = false;
 let monitoringTimeout = null;
 let updateWindow;
 let settingsWindow;
+let aboutWindow;
 let config = {
     appGroups: [],
     anonymousUsage: true,
@@ -331,7 +332,8 @@ async function startMonitoring() {
                     try {
                         await exec(`taskkill /IM "${controlledApp.name}" /F`);
                     } catch (error) {
-                        // Ignore errors if process is already gone
+                        console.error(`[Pairkiller] Error stopping ${controlledApp.name}:`, error);
+                        Sentry.captureException(error);
                     }
                 }
             }
@@ -399,7 +401,7 @@ function setupTray() {
         },
         { 
             label: 'About', 
-            click: () => openMainWindow() 
+            click: () => openAboutWindow() 
         },
         { type: 'separator' },
         { 
@@ -436,22 +438,32 @@ function openUpdateWindow() {
     updateWindow.loadFile('update.html');
 }
 
-function openMainWindow() {
-    mainWindow = new BrowserWindow({
+function openAboutWindow() {
+    if (aboutWindow) {
+        aboutWindow.focus();
+        return;
+    }
+
+    aboutWindow = new BrowserWindow({
         icon: path.join(__dirname, 'icon.png'),
         autoHideMenuBar: true,
-        width: 700,
-        height: 420,
+        width: 600,
+        height: 380,
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false,
-            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: false
         },
+        resizable: false,
+        maximizable: false,
+        title: "About"
     });
-    mainWindow.loadFile('about.html');
-    if (process.env.NODE_ENV === 'development') {
-        mainWindow.webContents.openDevTools();
-    }
+
+    aboutWindow.loadFile('about.html');
+    aboutWindow.setMenu(null);
+
+    aboutWindow.on('closed', () => {
+        aboutWindow = null;
+    });
 }
 
 function openSettingsWindow() {
@@ -467,7 +479,7 @@ function openSettingsWindow() {
             nodeIntegration: true,
             contextIsolation: false
         },
-        backgroundColor: '#1c1917' // stone-900 color
+        backgroundColor: '#1c1917'
     });
 
     settingsWindow.loadFile('settings.html');

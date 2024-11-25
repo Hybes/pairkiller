@@ -5,8 +5,9 @@ document.addEventListener('DOMContentLoaded', (event) => {
     // Get and display version
     async function displayVersion() {
         const version = await ipcRenderer.invoke('get-version');
-        const versionElement = document.querySelector('#version-number');
-        versionElement.innerHTML = `<a href="https://github.com/hybes/pairkiller" class="text-blue-300 hover:underline">Version ${version}</a>`;
+        const versionLink = document.querySelector('#version-number a');
+        versionLink.textContent = `Version ${version}`;
+        versionLink.href = 'https://github.com/hybes/pairkiller';
     }
     displayVersion();
 
