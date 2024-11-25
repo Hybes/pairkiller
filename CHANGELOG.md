@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [2.0.1](https://github.com/hybes/pairkiller/compare/v1.8.0...v2.0.1) (2024-11-25)
+
 ### [1.7.3](https://github.com/Hybes/blitz-for-league-only/compare/v1.7.2...v1.7.3) (2023-11-08)
 
 ### [1.7.2](https://github.com/Hybes/blitz-for-league-only/compare/v1.7.1...v1.7.2) (2023-11-08)

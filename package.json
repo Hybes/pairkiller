@@ -1,14 +1,15 @@
 {
   "name": "pairkiller",
   "productName": "Pairkiller",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A flexible app monitoring and control system",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
     "watch:css": "npx tailwindcss -i ./styles.css -o ./output.css --watch",
-    "build:css": "npx tailwindcss -i ./styles.css -o ./output.css"
+    "build:css": "npx tailwindcss -i ./styles.css -o ./output.css",
+    "bump": "standard-version"
   },
   "build": {
     "appId": "uk.cnnct.pairkiller",
