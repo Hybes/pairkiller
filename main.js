@@ -13,6 +13,11 @@ Sentry.init({
     environment: process.env.NODE_ENV || 'production'
 });
 
+// Version IPC handler
+ipcMain.handle('get-version', () => {
+    return app.getVersion();
+});
+
 // Auto-updater configuration
 autoUpdater.setFeedURL({
     provider: 'github',
@@ -27,7 +32,7 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
     console.log('[Pairkiller] Update available:', info);
     new Notification({
-        title: 'Pairkiller Update Available',
+        title: 'Pairkiller',
         body: 'A new version is available and will be installed automatically.'
     }).show();
 });
@@ -48,8 +53,8 @@ autoUpdater.on('download-progress', (progress) => {
 autoUpdater.on('update-downloaded', (info) => {
     console.log('[Pairkiller] Update downloaded:', info);
     new Notification({
-        title: 'Pairkiller Update Ready',
-        body: 'Restart the application to apply the update.'
+        title: 'Pairkiller',
+        body: 'Update ready to install. The app will restart to apply the update.'
     }).show();
 });
 

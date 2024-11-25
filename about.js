@@ -2,6 +2,14 @@ document.addEventListener('DOMContentLoaded', (event) => {
     const usageCollectionToggle = document.getElementById('usageCollectionToggle');
     const { ipcRenderer } = require('electron');
 
+    // Get and display version
+    async function displayVersion() {
+        const version = await ipcRenderer.invoke('get-version');
+        const versionElement = document.querySelector('#version-number');
+        versionElement.innerHTML = `<a href="https://github.com/hybes/pairkiller" class="text-blue-300 hover:underline">Version ${version}</a>`;
+    }
+    displayVersion();
+
     // Load initial config
     ipcRenderer.invoke('get-config').then(config => {
         usageCollectionToggle.checked = config.anonymousUsage;
