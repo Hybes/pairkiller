@@ -12,7 +12,7 @@
     "bump": "standard-version"
   },
   "build": {
-    "appId": "uk.cnnct.pairkiller",
+    "appId": "com.pairkiller.app",
     "productName": "Pairkiller",
     "directories": {
       "output": "dist"
@@ -21,11 +21,16 @@
       "target": "nsis",
       "icon": "icon.png"
     },
-    "publish": {
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "publish": [{
       "provider": "github",
       "owner": "hybes",
-      "repo": "pairkiller"
-    }
+      "repo": "pairkiller",
+      "releaseType": "release"
+    }]
   },
   "keywords": [],
   "author": "Ben Hybert",
