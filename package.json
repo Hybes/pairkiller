@@ -19,7 +19,8 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "artifactName": "${productName}.Setup.${version}.${ext}"
     },
     "nsis": {
       "oneClick": true,
