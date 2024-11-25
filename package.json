@@ -1,61 +1,52 @@
 {
-  "name": "blitz-for-league-only",
-  "productName": "Blitz for League Only",
-  "version": "1.8.0",
-  "description": "Open and Close Blitz based on the status of League Client",
+  "name": "pairkiller",
+  "productName": "Pairkiller",
+  "version": "1.0.0",
+  "description": "A flexible app monitoring and control system",
   "main": "main.js",
   "scripts": {
-    "start": "tailwindcss build -i styles.css -o output.css && electron .",
-    "build": "tailwindcss build -i styles.css -o output.css && electron-builder build --windows --publish never",
-    "release": "standard-version"
+    "start": "electron .",
+    "build": "electron-builder",
+    "watch:css": "npx tailwindcss -i ./styles.css -o ./output.css --watch",
+    "build:css": "npx tailwindcss -i ./styles.css -o ./output.css"
   },
   "build": {
-    "appId": "com.benhybert.blitzforleagueonly",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "hybes",
-        "repo": "blitz-for-league-only"
-      }
-    ],
+    "appId": "uk.cnnct.pairkiller",
+    "productName": "Pairkiller",
+    "directories": {
+      "output": "dist"
+    },
     "win": {
-      "artifactName": "Blitz-for-League-Only-Installer-${version}.${ext}",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
+      "target": "nsis",
+      "icon": "icon.png"
     },
-    "mac": {
-      "target": "dir"
-    },
-    "linux": {
-      "target": "dir"
-    },
-    "files": [
-      "**/*",
-      "!**/elevate.exe"
-    ]
+    "publish": {
+      "provider": "github",
+      "owner": "hybes",
+      "repo": "pairkiller"
+    }
   },
   "keywords": [],
   "author": "Ben Hybert",
-  "license": "ISC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hybes/pairkiller"
+  },
   "dependencies": {
-    "@sentry/electron": "^4.10.0",
-    "autoprefixer": "^10.4.14",
-    "dotenv": "^16.3.1",
-    "electron-context-menu": "^3.6.1",
-    "electron-updater": "^6.1.1",
-    "node-fetch": "^2.6.12",
-    "postcss": "^8.4.27",
-    "tailwindcss": "^3.3.3"
+    "@sentry/electron": "^4.8.0",
+    "autoprefixer": "^10.4.20",
+    "dotenv": "^16.4.5",
+    "electron-context-menu": "^4.0.4",
+    "electron-updater": "^6.3.9",
+    "node-fetch": "^3.3.2",
+    "npm-check-updates": "^17.1.11",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15"
   },
   "devDependencies": {
-    "electron": "^25.4.0",
-    "electron-builder": "^24.6.3",
+    "electron": "^25.0.0",
+    "electron-builder": "^24.4.0",
     "standard-version": "^9.5.0"
   }
 }

@@ -1,30 +1,85 @@
-const fs = require('fs');
-const { app, BrowserWindow, Menu, Tray, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, ipcMain, Notification } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
+const fs = require('fs');
+const { exec } = require('child_process');
 const util = require('util');
-const fetch = require('node-fetch')
-const exec = util.promisify(require('child_process').exec);
 const Sentry = require('@sentry/electron');
-const { send } = require('process');
-const os = require('os');
-const screen = require('electron').screen;
-
-const configPath = path.join(app.getPath('userData'), 'config.json');
-const defaultBlitzPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Blitz', 'Blitz.exe');
 require('dotenv').config();
 
-const LEAGUE_CLIENT = 'LeagueClient.exe';
-const LEAGUE_GAME = 'League of Legends.exe';
-const BLITZ_APP = 'Blitz.exe';
+// Initialize Sentry
+Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'production'
+});
+
+// Auto-updater configuration
+autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'hybes',
+    repo: 'pairkiller'
+});
+
+autoUpdater.on('checking-for-update', () => {
+    console.log('[Pairkiller] Checking for updates...');
+});
+
+autoUpdater.on('update-available', (info) => {
+    console.log('[Pairkiller] Update available:', info);
+    new Notification({
+        title: 'Pairkiller Update Available',
+        body: 'A new version is available and will be installed automatically.'
+    }).show();
+});
+
+autoUpdater.on('update-not-available', () => {
+    console.log('[Pairkiller] No updates available');
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('[Pairkiller] Auto-updater error:', err);
+    Sentry.captureException(err);
+});
+
+autoUpdater.on('download-progress', (progress) => {
+    console.log(`[Pairkiller] Download progress: ${progress.percent}%`);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Pairkiller] Update downloaded:', info);
+    new Notification({
+        title: 'Pairkiller Update Ready',
+        body: 'Restart the application to apply the update.'
+    }).show();
+});
+
+// Check for updates every hour
+setInterval(() => {
+    autoUpdater.checkForUpdates().catch(err => {
+        console.error('[Pairkiller] Error checking for updates:', err);
+        Sentry.captureException(err);
+    });
+}, 60 * 60 * 1000);
+
+// Initial update check after 1 minute
+setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(err => {
+        console.error('[Pairkiller] Error checking for updates:', err);
+        Sentry.captureException(err);
+    });
+}, 60 * 1000);
+
+const configPath = path.join(app.getPath('userData'), 'config.json');
+require('dotenv').config();
 
 let mainWindow;
 let tray = null;
-let monitoring = true;
+let monitoring = false;
+let monitoringTimeout = null;
 let updateWindow;
+let settingsWindow;
 let config = {
-    blitzPath: defaultBlitzPath,
-    appInstalled: false,
+    appGroups: [],
     anonymousUsage: true,
     version: app.getVersion()
 };
@@ -32,6 +87,14 @@ let config = {
 if (process.env.NODE_ENV !== 'development') {
     Sentry.init({
         dsn: 'https://83d267b1eff14ce29e39bd6c58b05bc8@error.brth.uk/1',
+        release: app.getVersion(),
+        beforeSend(event) {
+            event.tags = {
+                ...event.tags,
+                app: 'Pairkiller'
+            };
+            return event;
+        }
     });
 };
 
@@ -51,8 +114,7 @@ if (fs.existsSync(configPath)) {
     } catch (error) {
         Sentry.captureException(error);
     }
-}
-else {
+} else {
     app.setLoginItemSettings({
         openAtLogin: true
     });
@@ -69,15 +131,13 @@ ipcMain.handle('get-usage-collection', (event) => {
     return config.anonymousUsage;
 });
 ipcMain.on('install-update', () => {
-    // This will quit and install the update, ensuring the app is updated
     autoUpdater.quitAndInstall();
 });
 ipcMain.on('check-for-updates', () => {
     if (process.env.NODE_ENV === 'development') {
-        // Mock response for development
         setTimeout(() => {
             mainWindow.webContents.send('update-status', 'not-available');
-        }, 1000); // Simulate a delay for checking updates
+        }, 1000);
     } else {
         autoUpdater.checkForUpdates();
     }
@@ -87,6 +147,47 @@ ipcMain.on('close-update-window', () => {
         updateWindow.close();
     }
 });
+ipcMain.on('add-app-group', (event, group) => {
+    config.appGroups.push(group);
+    fs.writeFileSync(configPath, JSON.stringify(config));
+});
+ipcMain.on('remove-app-group', (event, groupId) => {
+    config.appGroups = config.appGroups.filter(group => group.id !== groupId);
+    fs.writeFileSync(configPath, JSON.stringify(config));
+});
+ipcMain.on('update-app-group', (event, updatedGroup) => {
+    const index = config.appGroups.findIndex(group => group.id === updatedGroup.id);
+    if (index !== -1) {
+        config.appGroups[index] = updatedGroup;
+        fs.writeFileSync(configPath, JSON.stringify(config));
+    }
+});
+
+// Add file dialog handler
+ipcMain.handle('open-file-dialog', async () => {
+    const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [
+            { name: 'Executables', extensions: ['exe', 'bat', 'cmd'] }
+        ]
+    });
+    
+    return {
+        filePath: result.filePaths[0],
+        canceled: result.canceled
+    };
+});
+
+// Add config handlers
+ipcMain.handle('get-config', () => {
+    return config;
+});
+
+ipcMain.on('save-config', (event, newConfig) => {
+    config = newConfig;
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    settingsWindow.close();
+});
 
 autoUpdater.setFeedURL({
     provider: 'github',
@@ -95,7 +196,6 @@ autoUpdater.setFeedURL({
 });
 autoUpdater.on('checking-for-update', () => {
     sendTracking('/auto-update', 'Auto Update');
-    // openUpdateWindow();
 });
 autoUpdater.on('update-available', (info) => {
     sendTracking('/update-available', 'Update Available');
@@ -125,7 +225,7 @@ autoUpdater.on('update-not-available', () => {
 autoUpdater.on('error', (err) => {
     sendTracking('/update-error', 'Update Error');
     if (updateWindow) {
-        Sentry.captureException(error);
+        Sentry.captureException(err);
         updateWindow.webContents.send('update-status', 'Error: ' + err.message);
     }
 });
@@ -153,42 +253,108 @@ async function isTaskRunning(taskName) {
         return false;
     }
 }
-async function ensureBlitzIsRunning() {
-    const isBlitzRunning = await isTaskRunning(BLITZ_APP);
-    if (!isBlitzRunning) {
-        exec(`"${config.blitzPath}"`, (error) => {
+
+async function ensureAppIsRunning(appPath) {
+    const appName = path.basename(appPath);
+    const isAppRunning = await isTaskRunning(appName);
+    if (!isAppRunning) {
+        exec(`"${appPath}"`, (error) => {
             if (error) {
                 Sentry.captureException(error);
             }
         });
     }
 }
-async function startMonitoring() {
-    setInterval(async () => {
-        if (monitoring) {
-            try {
-                const isLeagueClientRunning = await isTaskRunning(LEAGUE_CLIENT);
-                const isLeagueOfLegendsRunning = await isTaskRunning(LEAGUE_GAME);
-                const isBlitzRunning = await isTaskRunning(BLITZ_APP);
 
-                if (isLeagueClientRunning || isLeagueOfLegendsRunning) {
-                    await ensureBlitzIsRunning();
-                } else if (!isLeagueClientRunning && !isLeagueOfLegendsRunning && isBlitzRunning) {
-                    exec('taskkill /im Blitz.exe /f', (errorKill) => {
-                        if (errorKill) {
-                            Sentry.captureException(errorKill);
-                        }
-                    });
+async function startMonitoring() {
+    if (!monitoring) return;
+
+    try {
+        for (const group of config.appGroups) {
+            const monitoredAppsRunning = await Promise.all(
+                group.monitoredApps.map(async app => {
+                    const running = await isTaskRunning(app.name);
+                    if (app.lastState !== running) {
+                        app.lastState = running;
+                        console.log(`[Pairkiller] ${app.name} is now ${running ? 'running' : 'stopped'}`);
+                    }
+                    return { app, running };
+                })
+            );
+
+            let conditionMet = group.condition === 'all' 
+                ? monitoredAppsRunning.every(app => app.running)
+                : monitoredAppsRunning.some(app => app.running);
+
+            if (group.reverse) {
+                conditionMet = !conditionMet;
+            }
+
+            if (group.lastCondition !== conditionMet) {
+                group.lastCondition = conditionMet;
+                console.log(`[Pairkiller] Group "${group.name}" condition: ${conditionMet ? 'met' : 'not met'}`);
+            }
+
+            for (const controlledApp of group.controlledApps) {
+                const isRunning = await isTaskRunning(controlledApp.name);
+                let shouldBeRunning;
+
+                switch (controlledApp.action) {
+                    case 'start':
+                        shouldBeRunning = conditionMet;
+                        break;
+                    case 'stop':
+                        shouldBeRunning = !conditionMet;
+                        break;
+                    case 'sync':
+                        // For 'sync', we match the state of the monitored apps
+                        shouldBeRunning = monitoredAppsRunning.some(app => app.running);
+                        break;
+                    case 'opposite':
+                        // For 'opposite', we do the inverse of the monitored apps
+                        shouldBeRunning = !monitoredAppsRunning.some(app => app.running);
+                        break;
+                    default:
+                        continue;
                 }
-            } catch (error) {
-                Sentry.captureException(error);
+
+                if (!isRunning && shouldBeRunning) {
+                    console.log(`[Pairkiller] Starting ${controlledApp.name}`);
+                    await ensureAppIsRunning(controlledApp.path);
+                } else if (isRunning && !shouldBeRunning) {
+                    console.log(`[Pairkiller] Stopping ${controlledApp.name}`);
+                    try {
+                        await exec(`taskkill /IM "${controlledApp.name}" /F`);
+                    } catch (error) {
+                        // Ignore errors if process is already gone
+                    }
+                }
             }
         }
-    }, 3000);
+    } catch (error) {
+        console.error('[Pairkiller] Error:', error);
+        Sentry.captureException(error);
+    }
+
+    monitoringTimeout = setTimeout(startMonitoring, 5000);
 }
+
+function stopMonitoring() {
+    monitoring = false;
+    if (monitoringTimeout) {
+        clearTimeout(monitoringTimeout);
+        monitoringTimeout = null;
+    }
+}
+
 async function sendTracking(data, name) {
     if (config.anonymousUsage) {
         try {
+            const body = {
+                name: 'Pairkiller',
+                data,
+                version: app.getVersion()
+            };
             const response = await fetch('https://view.cnnct.uk/api/send', {
                 method: 'POST',
                 headers: {
@@ -219,90 +385,35 @@ async function sendTracking(data, name) {
     }
 }
 
-async function killLeagueProcesses() {
-    try {
-        await exec('taskkill /im "League of Legends.exe" /f');
-        await exec('taskkill /im "LeagueClient.exe" /f');
-    } catch (error) {
-        Sentry.captureException(error);
-    }
-}
 function setupTray() {
     tray = new Tray(path.join(__dirname, 'icon.png'));
-    updateTrayMenu();
-    tray.on('click', openMainWindow);
-}
-function updateTrayMenu() {
-    const appVersion = app.getVersion();
     const contextMenu = Menu.buildFromTemplate([
-        {
-            label: 'Toggle Monitoring',
-            type: 'checkbox',
-            checked: monitoring,
-            click: () => {
-                sendTracking('/toggle-monitoring', 'Monitoring Toggle');
-                monitoring = !monitoring;
-                if (monitoring) {
-                    startMonitoring();
-                }
-                updateTrayMenu();
-            }
+        { 
+            label: 'Settings', 
+            click: () => openSettingsWindow() 
         },
-        {
-            label: 'Start on Boot',
-            type: 'checkbox',
-            checked: app.getLoginItemSettings().openAtLogin,
-            click: () => {
-                sendTracking('/toggle-start-on-boot', 'Start on Boot Toggle');
-                const startOnBoot = !app.getLoginItemSettings().openAtLogin;
-                app.setLoginItemSettings({
-                    openAtLogin: startOnBoot
-                });
-                updateTrayMenu();
-            }
+        { 
+            label: 'About', 
+            click: () => openMainWindow() 
         },
-        {
-            label: 'Force Kill League',
+        { type: 'separator' },
+        { 
+            label: 'Quit', 
             click: () => {
-                sendTracking('/force-kill-league', 'Force Kill League');
-                killLeagueProcesses();
-            },
-        },
-        {
-            label: 'About',
-            click: () => {
-                sendTracking('/about', 'About');
-                openMainWindow();
-            }
-        },
-        {
-            label: `Version: ${appVersion}`,
-            enabled: false
-        },
-        {
-            label: 'Check for Updates',
-            click: () => {
-                sendTracking('/check-for-updates', 'Check for Updates');
-                if (process.env.NODE_ENV === 'development') {
-                    // Mock response for development
-                    setTimeout(() => {
-                        mainWindow.webContents.send('update-status', 'not-available');
-                    }, 1000); // Simulate a delay for checking updates
-                } else {
-                    autoUpdater.checkForUpdates();
-                }
-            }
-        },
-        {
-            label: 'Quit',
-            click: () => {
-                sendTracking('/quit', 'Quit');
+                stopMonitoring();
                 app.quit();
-            }
+            } 
         }
     ]);
+    tray.setToolTip('Pairkiller');
     tray.setContextMenu(contextMenu);
+    tray.on('double-click', () => openSettingsWindow());
+
+    // Start monitoring when tray is setup
+    monitoring = true;
+    startMonitoring();
 }
+
 function openUpdateWindow() {
     updateWindow = new BrowserWindow({
         width: 400,
@@ -319,40 +430,83 @@ function openUpdateWindow() {
     });
     updateWindow.loadFile('update.html');
 }
+
 function openMainWindow() {
     mainWindow = new BrowserWindow({
         icon: path.join(__dirname, 'icon.png'),
         autoHideMenuBar: true,
         width: 700,
-        height: 360,
+        height: 420,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
             preload: path.join(__dirname, 'preload.js'),
         },
-        resizable: false,
-        title: "About"
     });
     mainWindow.loadFile('about.html');
+    if (process.env.NODE_ENV === 'development') {
+        mainWindow.webContents.openDevTools();
+    }
+}
+
+function openSettingsWindow() {
+    if (settingsWindow) {
+        settingsWindow.focus();
+        return;
+    }
+
+    settingsWindow = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        },
+        backgroundColor: '#1c1917' // stone-900 color
+    });
+
+    settingsWindow.loadFile('settings.html');
+    if (process.env.NODE_ENV === 'development') {
+        settingsWindow.webContents.openDevTools();
+    }
+    settingsWindow.setMenuBarVisibility(false);
+
+    settingsWindow.on('closed', () => {
+        settingsWindow = null;
+    });
 }
 
 app.whenReady().then(() => {
     setupTray();
     sendTracking('/app-open', 'App Open');
-    if (monitoring) {
-        startMonitoring();
+});
+
+app.on('browser-window-created', (e, window) => {
+    if (process.env.NODE_ENV !== 'development') {
+        window.webContents.on('devtools-opened', () => {
+            window.webContents.closeDevTools();
+        });
     }
 });
-app.on('browser-window-created', function (e, window) {
-    window.webContents.on('devtools-opened', function (e) {
-      if (process.env.NODE_ENV !== 'development') {
-        window.webContents.closeDevTools();
-      }
-    });
-  });
+
 app.on('window-all-closed', (e) => {
-    e.preventDefault();
+    e.preventDefault(); // Prevent app from quitting when all windows are closed
 });
+
+app.on('before-quit', () => {
+    stopMonitoring();
+});
+
+process.on('SIGINT', () => {
+    stopMonitoring();
+    app.quit();
+});
+
+process.on('SIGTERM', () => {
+    stopMonitoring();
+    app.quit();
+});
+
 app.on('ready', () => {
     autoUpdater.checkForUpdatesAndNotify();
 });
