@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
+    "build": "npm run build:css && electron-builder",
     "watch:css": "npx tailwindcss -i ./styles.css -o ./output.css --watch",
     "build:css": "npx tailwindcss -i ./styles.css -o ./output.css",
     "bump": "standard-version"
