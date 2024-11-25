@@ -49,35 +49,8 @@
             -webkit-transition: 0.5s;
             transition: 0.5s;
         }
-        .fa-instagram:hover {
-            background-color: #C1387A;
-        }
-
-        .fa-github {
-            padding: 10px 14px;
-            -o-transition: 0.5s;
-            -ms-transition: 0.5s;
-            -moz-transition: 0.5s;
-            -webkit-transition: 0.5s;
-            transition: 0.5s;
-        }
-        .fa-github:hover {
-            background-color: #6e5494;
-        }
-        .fa-envelope {
-            padding: 10px 14px;
-            -o-transition: 0.5s;
-            -ms-transition: 0.5s;
-            -moz-transition: 0.5s;
-            -webkit-transition: 0.5s;
-            transition: 0.5s;
-        }
-        .fa-envelope:hover {
-            background-color: #ea9900;
-        }
     </style>
 </head>
-
 <body class="h-full w-full flex flex-col bg-stone-900 text-stone-100 p-6">
     <div class="max-w-4xl mx-auto w-full">
         <div class="flex justify-between items-center mb-8">
@@ -90,15 +63,33 @@
 
         <div class="app-groups space-y-6">
             <div class="flex justify-between items-center">
+                <h3 class="text-xl font-semibold">Presets</h3>
+            </div>
+            <div id="presets" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <button class="add-preset bg-stone-800 hover:bg-stone-700 p-4 rounded-lg text-left" data-preset="explorerNotepad">
+                        <div class="font-semibold text-lg mb-1">Explorer + Notepad</div>
+                        <div class="text-sm text-stone-400">Opens Notepad automatically when Windows Explorer is launched</div>
+                    </button>
+                    <button class="add-preset bg-stone-800 hover:bg-stone-700 p-4 rounded-lg text-left" data-preset="leagueOfLegends">
+                        <div class="font-semibold text-lg mb-1">Blitz / League of Legends</div>
+                        <div class="text-sm text-stone-400">Add monitoring for League of Legends with Blitz companion app</div>
+                    </button>
+                    <button class="add-preset bg-stone-800 hover:bg-stone-700 p-4 rounded-lg text-left" data-preset="rocketLeague">
+                        <div class="font-semibold text-lg mb-1">BakkesMod / Rocket League</div>
+                        <div class="text-sm text-stone-400">Add monitoring for Rocket League with BakkesMod companion app</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-8 flex justify-between items-center">
                 <h3 class="text-xl font-semibold">App Groups</h3>
                 <button id="addGroupButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2">
                     <i class="fa fa-plus"></i>
                     <span>Add New Group</span>
                 </button>
             </div>
-            <div id="appGroups" class="space-y-6">
-                <!-- App groups will be dynamically populated here -->
-            </div>
+            <div id="appGroups" class="space-y-6"></div>
         </div>
     </div>
 
@@ -112,10 +103,6 @@
                         <option value="all">All apps must be running</option>
                         <option value="any">Any app must be running</option>
                     </select>
-                    <div class="flex items-center space-x-2">
-                        <input type="checkbox" class="reverse-toggle w-4 h-4 bg-stone-700 border-stone-600">
-                        <label>Reverse Logic</label>
-                    </div>
                 </div>
                 <div class="flex space-x-2">
                     <button class="duplicate-group bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center space-x-2">
@@ -159,24 +146,24 @@
     <template id="appEntryTemplate">
         <div class="app-entry flex items-center space-x-3 bg-stone-700 p-3 rounded-lg">
             <div class="flex-grow">
-                <input type="text" class="app-name bg-stone-600 text-white px-3 py-2 rounded-lg w-full mb-2" placeholder="App Name (e.g., notepad.exe)" readonly>
-                <div class="flex space-x-2">
-                    <input type="text" class="app-path bg-stone-600 text-white px-3 py-2 rounded-lg flex-grow" placeholder="Click browse to select application" readonly>
-                    <button class="browse-app bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg">
-                        <i class="fa fa-folder-open"></i>
-                    </button>
+                <input type="text" class="app-name bg-stone-600 text-white px-3 py-2 rounded-lg w-full mb-2" placeholder="App Name (e.g., notepad.exe)">
+                <div class="path-input-container">
+                    <div class="flex space-x-2">
+                        <input type="text" class="app-path bg-stone-600 text-white px-3 py-2 rounded-lg flex-grow" placeholder="Path to executable (optional)">
+                        <button class="browse-button bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg">Browse</button>
+                    </div>
+                </div>
+                <div class="app-action-container mt-2" style="display: none;">
+                    <select class="app-action bg-stone-600 text-white px-3 py-2 rounded-lg w-full">
+                        <option value="sync">Sync with trigger</option>
+                        <option value="opposite">Opposite of trigger</option>
+                        <option value="start">Start when triggered</option>
+                        <option value="stop">Stop when triggered</option>
+                    </select>
                 </div>
             </div>
-            <div class="flex-shrink-0 w-56">
-                <select class="app-action bg-stone-600 text-white px-3 py-2 rounded-lg w-full" style="display: none;">
-                    <option value="start">Start when triggered</option>
-                    <option value="stop">Stop when triggered</option>
-                    <option value="sync">Sync with trigger</option>
-                    <option value="opposite">Opposite of trigger</option>
-                </select>
-            </div>
-            <button class="delete-app text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-stone-600 flex-shrink-0">
-                <i class="fa fa-times"></i>
+            <button class="delete-app bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg">
+                <i class="fa fa-trash"></i>
             </button>
         </div>
     </template>
