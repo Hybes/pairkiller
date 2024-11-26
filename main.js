@@ -166,7 +166,7 @@ const defaultPresets = {
         controlledApps: [
             {
                 name: "BakkesMod.exe",
-                path: path.join(app.getPath('home'), 'AppData/Roaming/bakkesmod/bakkesmod.exe'),
+                path: "C:\\Program Files\\BakkesMod\\BakkesMod.exe",
                 action: "sync"
             }
         ]

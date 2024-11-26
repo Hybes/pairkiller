@@ -157,10 +157,9 @@ function addAppEntry(container, appData = null, isControlled = false) {
     // Browse button
     entry.querySelector('.browse-button').addEventListener('click', async () => {
         const result = await ipcRenderer.invoke('open-file-dialog');
-        if (result) {
-            const appPath = result[0];
-            entry.querySelector('.app-path').value = appPath;
-            entry.querySelector('.app-name').value = path.basename(appPath);
+        if (!result.canceled && result.filePath) {
+            entry.querySelector('.app-path').value = result.filePath;
+            entry.querySelector('.app-name').value = path.basename(result.filePath);
         }
     });
 
