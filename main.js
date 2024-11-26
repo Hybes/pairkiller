@@ -9,8 +9,50 @@ require('dotenv').config();
 
 // Initialize Sentry
 Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'production'
+    dsn: 'https://83d267b1eff14ce29e39bd6c58b05bc8@error.brth.uk/1',
+    release: app.getVersion(),
+    environment: process.env.NODE_ENV || 'production',
+    debug: process.env.NODE_ENV === 'development',
+    beforeSend(event) {
+        // Add app info
+        event.tags = {
+            ...event.tags,
+            app: 'Pairkiller',
+            version: app.getVersion(),
+            electron: process.versions.electron,
+            platform: process.platform
+        };
+        
+        // Add user config (excluding sensitive data)
+        if (config) {
+            event.extra = {
+                ...event.extra,
+                anonymousUsage: config.anonymousUsage,
+                appGroupCount: config.appGroups?.length || 0
+            };
+        }
+        
+        return event;
+    },
+    integrations: [
+        Sentry.browserTracingIntegration(),
+    ],
+    tracesSampleRate: 0.2,
+});
+
+// Add global error handlers
+process.on('uncaughtException', (error) => {
+    Sentry.captureException(error, {
+        level: 'fatal',
+        tags: { handler: 'uncaughtException' }
+    });
+});
+
+process.on('unhandledRejection', (reason) => {
+    Sentry.captureException(reason, {
+        level: 'error',
+        tags: { handler: 'unhandledRejection' }
+    });
 });
 
 // Version IPC handler
@@ -104,29 +146,8 @@ if (process.env.NODE_ENV !== 'development') {
     });
 };
 
-process.on('unhandledRejection', (reason, promise) => {
-    Sentry.captureException(reason);
-});
-
-process.on('uncaughtException', (error) => {
-    Sentry.captureException(error);
-});
-
 // Add default presets
 const defaultPresets = {
-    explorerNotepad: {
-        name: "Explorer + Notepad",
-        monitoredApps: [
-            { name: "explorer.exe" }
-        ],
-        controlledApps: [
-            {
-                name: "notepad.exe",
-                path: "C:\\Windows\\System32\\notepad.exe",
-                action: "sync"
-            }
-        ]
-    },
     leagueOfLegends: {
         name: "Blitz / League of Legends",
         monitoredApps: [
@@ -287,8 +308,8 @@ ipcMain.handle('open-file-dialog', async () => {
 
 autoUpdater.setFeedURL({
     provider: 'github',
-    repo: 'blitz-for-league-only',
-    owner: 'Hybes'
+    repo: 'pairkiller',
+    owner: 'hybes'
 });
 autoUpdater.on('checking-for-update', () => {
     sendTracking('/auto-update', 'Auto Update');
@@ -340,146 +361,172 @@ function debug(...args) {
 }
 
 async function startMonitoring() {
-    if (monitoring) return;
-    monitoring = true;
-    debug('Starting monitoring service');
-    debug('Current config:', JSON.stringify(config, null, 2));
-
-    async function checkApps() {
-        try {
-            debug('\n=== Starting App Check Cycle ===');
-            // Check app groups
-            for (const appGroup of config.appGroups) {
-                debug(`\nChecking app group: ${appGroup.name}`);
-                let anyMonitoredAppRunning = false;
-                let runningMonitoredApps = [];
-
-                // Check monitored apps
-                debug('Checking monitored apps:');
-                for (const app of appGroup.monitoredApps) {
-                    const isRunning = await isTaskRunning(app.name);
-                    debug(`  - ${app.name}: ${isRunning ? 'RUNNING' : 'NOT RUNNING'}`);
-                    if (isRunning) {
-                        anyMonitoredAppRunning = true;
-                        runningMonitoredApps.push(app.name);
-                    }
-                }
-
-                debug(`Monitored apps status: ${anyMonitoredAppRunning ? 'ACTIVE' : 'INACTIVE'}`);
-                if (runningMonitoredApps.length > 0) {
-                    debug(`Running apps: ${runningMonitoredApps.join(', ')}`);
-                }
-
-                // Determine if we should take action based on condition
-                let shouldTakeAction = false;
-                if (appGroup.condition === 'all') {
-                    shouldTakeAction = appGroup.monitoredApps.length > 0 && 
-                        runningMonitoredApps.length === appGroup.monitoredApps.length;
-                } else { // 'any'
-                    shouldTakeAction = anyMonitoredAppRunning;
-                }
-
-                // Handle controlled apps
-                debug('\nChecking controlled apps:');
-                for (const app of appGroup.controlledApps) {
-                    const isRunning = await isTaskRunning(app.name);
-                    let shouldBeRunning = false;
-
-                    switch (app.action) {
-                        case 'start':
-                            shouldBeRunning = shouldTakeAction;
-                            break;
-                        case 'stop':
-                            shouldBeRunning = !shouldTakeAction;
-                            break;
-                        case 'sync':
-                            shouldBeRunning = shouldTakeAction;
-                            break;
-                        case 'opposite':
-                            shouldBeRunning = !shouldTakeAction;
-                            break;
-                        default:
-                            debug(`  ⚠️ Unknown action type for ${app.name}:`, app.action);
-                            continue;
-                    }
-
-                    debug(`  - ${app.name}:`);
-                    debug(`    Current state: ${isRunning ? 'RUNNING' : 'NOT RUNNING'}`);
-                    debug(`    Should be: ${shouldBeRunning ? 'RUNNING' : 'NOT RUNNING'}`);
-                    debug(`    Action: ${app.action.toUpperCase()}`);
-
-                    if (shouldBeRunning && !isRunning) {
-                        debug(`    Starting ${app.name}`);
-                        await ensureAppIsRunning(app.path || app.name);
-                    } else if (!shouldBeRunning && isRunning) {
-                        debug(`    Stopping ${app.name}`);
-                        exec(`taskkill /IM "${app.name}" /F`, (error) => {
-                            if (error) {
-                                debug(`    Error stopping ${app.name}:`, error);
-                            }
-                        });
-                    }
-                }
-            }
-        } catch (error) {
-            debug('Error in checkApps:', error);
-            Sentry.captureException(error);
-        }
-    }
-
-    // Initial check
-    await checkApps();
-    
-    // Set up interval for periodic checks
-    monitoringTimeout = setInterval(checkApps, 5000);
-    debug('Monitoring service started');
-}
-
-async function isTaskRunning(taskName) {
-    if (!taskName) {
-        debug('Task name is missing in config');
-        Sentry.captureException('Config is malformed, taskName is missing');
-        return false;
-    }
-
     try {
-        debug(`Checking if task is running: ${taskName}`);
-        const cmd = `tasklist /FI "IMAGENAME eq ${taskName}" /NH /FO CSV`;
-        const { stdout } = await util.promisify(exec)(cmd);
-        const isRunning = stdout.toLowerCase().includes(taskName.toLowerCase());
-        debug(`Task ${taskName} ${isRunning ? 'is' : 'is not'} running`);
-        return isRunning;
-    } catch (error) {
-        debug(`Error checking task ${taskName}:`, error);
-        Sentry.captureException(error);
-        return false;
-    }
-}
+        const transaction = Sentry.startSpan({
+            name: "Start App Monitoring",
+            op: "monitoring"
+        }, () => {
+            Sentry.addBreadcrumb({
+                category: 'monitoring',
+                message: 'Starting app monitoring',
+                level: 'info'
+            });
 
-async function ensureAppIsRunning(appPath) {
-    const appName = path.basename(appPath);
-    debug(`Ensuring app is running: ${appName} from path:`, appPath);
-    const isAppRunning = await isTaskRunning(appName);
-    if (!isAppRunning) {
-        debug(`Starting app: ${appName}`);
-        exec(`"${appPath}"`, (error) => {
-            if (error) {
-                debug(`Error starting ${appName}:`, error);
-                Sentry.captureException(error);
-            } else {
-                debug(`Successfully launched ${appName}`);
+            if (monitoring) {
+                debug('Already monitoring');
+                return;
             }
+            monitoring = true;
+            debug('Starting monitoring service');
+            debug('Current config:', JSON.stringify(config, null, 2));
+
+            async function checkApps() {
+                try {
+                    debug('\n=== Starting App Check Cycle ===');
+                    // Check app groups
+                    for (const appGroup of config.appGroups) {
+                        debug(`\nChecking app group: ${appGroup.name}`);
+                        let anyMonitoredAppRunning = false;
+                        let runningMonitoredApps = [];
+
+                        // Check monitored apps
+                        debug('Checking monitored apps:');
+                        for (const app of appGroup.monitoredApps) {
+                            const isRunning = await isTaskRunning(app.name);
+                            debug(`  - ${app.name}: ${isRunning ? 'RUNNING' : 'NOT RUNNING'}`);
+                            if (isRunning) {
+                                anyMonitoredAppRunning = true;
+                                runningMonitoredApps.push(app.name);
+                            }
+                        }
+
+                        debug(`Monitored apps status: ${anyMonitoredAppRunning ? 'ACTIVE' : 'INACTIVE'}`);
+                        if (runningMonitoredApps.length > 0) {
+                            debug(`Running apps: ${runningMonitoredApps.join(', ')}`);
+                        }
+
+                        // Determine if we should take action based on condition
+                        let shouldTakeAction = false;
+                        if (appGroup.condition === 'all') {
+                            shouldTakeAction = appGroup.monitoredApps.length > 0 && 
+                                runningMonitoredApps.length === appGroup.monitoredApps.length;
+                        } else { // 'any'
+                            shouldTakeAction = anyMonitoredAppRunning;
+                        }
+
+                        // Handle controlled apps
+                        debug('\nChecking controlled apps:');
+                        for (const app of appGroup.controlledApps) {
+                            const isRunning = await isTaskRunning(app.name);
+                            let shouldBeRunning = false;
+
+                            switch (app.action) {
+                                case 'start':
+                                    shouldBeRunning = shouldTakeAction;
+                                    break;
+                                case 'stop':
+                                    shouldBeRunning = !shouldTakeAction;
+                                    break;
+                                case 'sync':
+                                    shouldBeRunning = shouldTakeAction;
+                                    break;
+                                case 'opposite':
+                                    shouldBeRunning = !shouldTakeAction;
+                                    break;
+                                default:
+                                    debug(`  ⚠️ Unknown action type for ${app.name}:`, app.action);
+                                    continue;
+                            }
+
+                            debug(`  - ${app.name}:`);
+                            debug(`    Current state: ${isRunning ? 'RUNNING' : 'NOT RUNNING'}`);
+                            debug(`    Should be: ${shouldBeRunning ? 'RUNNING' : 'NOT RUNNING'}`);
+                            debug(`    Action: ${app.action.toUpperCase()}`);
+
+                            if (shouldBeRunning && !isRunning) {
+                                debug(`    Starting ${app.name}`);
+                                await ensureAppIsRunning(app.path || app.name);
+                            } else if (!shouldBeRunning && isRunning) {
+                                debug(`    Stopping ${app.name}`);
+                                exec(`taskkill /IM "${app.name}" /F`, (error) => {
+                                    if (error) {
+                                        debug(`    Error stopping ${app.name}:`, error);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    debug('Error in checkApps:', error);
+                    Sentry.captureException(error);
+                }
+            }
+
+            // Initial check
+            await checkApps();
+            
+            // Set up interval for periodic checks
+            monitoringTimeout = setInterval(checkApps, 5000);
+            debug('Monitoring service started');
         });
-    } else {
-        debug(`App ${appName} is already running`);
+    } catch (error) {
+        Sentry.captureException(error, {
+            tags: { function: 'startMonitoring' }
+        });
+        throw error;
     }
 }
 
 async function stopMonitoring() {
-    monitoring = false;
-    if (monitoringTimeout) {
-        clearInterval(monitoringTimeout);
-        monitoringTimeout = null;
+    try {
+        Sentry.addBreadcrumb({
+            category: 'monitoring',
+            message: 'Stopping app monitoring',
+            level: 'info'
+        });
+        monitoring = false;
+        if (monitoringTimeout) {
+            clearInterval(monitoringTimeout);
+            monitoringTimeout = null;
+        }
+    } catch (error) {
+        Sentry.captureException(error, {
+            tags: { function: 'stopMonitoring' }
+        });
+        throw error;
+    }
+}
+
+async function ensureAppIsRunning(appPath) {
+    const transaction = Sentry.startSpan({
+        op: "app.ensure",
+        name: "Ensure App Running"
+    });
+
+    try {
+        const appName = path.basename(appPath);
+        debug(`Ensuring app is running: ${appName} from path:`, appPath);
+        const isAppRunning = await isTaskRunning(appName);
+        if (!isAppRunning) {
+            debug(`Starting app: ${appName}`);
+            exec(`"${appPath}"`, (error) => {
+                if (error) {
+                    debug(`Error starting ${appName}:`, error);
+                    Sentry.captureException(error);
+                } else {
+                    debug(`Successfully launched ${appName}`);
+                }
+            });
+        } else {
+            debug(`App ${appName} is already running`);
+        }
+        transaction.finish();
+    } catch (error) {
+        Sentry.captureException(error, {
+            tags: { function: 'ensureAppIsRunning' },
+            extra: { appPath }
+        });
+        throw error;
     }
 }
 
