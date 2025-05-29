@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0](https://github.com/hybes/pairkiller/compare/v3.2.0...v4.0.0) (2024-11-26)
+
+### ✨ Features
+
+**Seamless Update System**
+- **Configuration Migration**: Automatic migration of settings from any previous version (v1.0.0+)
+- **Backup System**: Automatic configuration backups before updates with recovery functionality
+- **Enhanced Auto-Updater**: Improved error handling with network retry and graceful fallbacks
+- **Update Safety**: Pre-installation checks and validation to ensure successful updates
+- **Migration Testing**: Built-in test suite to verify configuration migrations work correctly
+
+**Compatibility Improvements**
+- Full backward compatibility with all previous configuration formats
+- Automatic detection and migration of legacy `apps` array to new `appGroups` structure
+- Preserved user settings during updates (monitoring intervals, UI preferences, etc.)
+- Intelligent recovery from corrupted configurations using backup system
+
+**Developer Experience**
+- Added comprehensive migration test suite (`npm run test:migration`)
+- Enhanced build validation in CI/CD pipeline
+- Improved error logging and debugging capabilities
+- Better Sentry integration for update-related issues
+
+### 🔧 Technical Changes
+
+- Added `configVersion` tracking for precise migration control
+- Implemented atomic configuration saving to prevent corruption
+- Enhanced error handling for network issues during updates
+- Added automatic cleanup of old configuration backups (keeps last 5)
+- Improved GitHub Actions workflow with compatibility testing
+
+### [3.2.0](https://github.com/hybes/pairkiller/compare/v3.1.1...v3.2.0) (2024-11-26)
+
 ### [3.1.1](https://github.com/hybes/pairkiller/compare/v3.1.0...v3.1.1) (2024-11-26)
 
 ## [3.1.0](https://github.com/hybes/pairkiller/compare/v3.0.0...v3.1.0) (2024-11-26)

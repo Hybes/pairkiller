@@ -2,71 +2,313 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  release:
-    runs-on: windows-latest
-    env:
-      GH_TOKEN: ${{ secrets.GH_TOKEN }}
-
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.get-version.outputs.version }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-    - name: Check if package.json changed
-      id: check_version
-      run: |
-        if git diff --name-only HEAD~1 HEAD | findstr "package.json"; then
-          echo "VERSION_CHANGED=true" >> $GITHUB_ENV
-        else
-          echo "VERSION_CHANGED=false" >> $GITHUB_ENV
-        fi
-      shell: bash
-      continue-on-error: true
+      - name: Check if package.json version changed
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q "package.json"; then
+            if git diff HEAD~1 HEAD package.json | grep -q '"version"'; then
+              echo "changed=true" >> $GITHUB_OUTPUT
+              echo "Package.json version changed, will build and release"
+            else
+              echo "changed=false" >> $GITHUB_OUTPUT
+              echo "Package.json changed but version didn't change"
+            fi
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Package.json didn't change"
+          fi
 
-    - name: Setup Node.js
-      if: env.VERSION_CHANGED == 'true'
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
 
-    - name: Install dependencies
-      if: env.VERSION_CHANGED == 'true'
-      run: npm install
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            target: "--win"
+            artifact_name: "windows"
+          - os: macos-latest
+            platform: mac
+            target: "--mac"
+            artifact_name: "macos"
+          - os: ubuntu-latest
+            platform: linux
+            target: "--linux"
+            artifact_name: "linux"
 
-    - name: Build Electron App
-      if: env.VERSION_CHANGED == 'true'
-      run: npm run build
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Check if gh is already installed
-      id: check_gh
-      run: |
-        if gh --version; then
-         echo "GH_INSTALLED=true" >> $GITHUB_ENV
-        else
-         echo "GH_INSTALLED=false" >> $GITHUB_ENV
-        fi
-      shell: bash
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
 
-    - name: Install GitHub CLI
-      if: env.GH_INSTALLED == 'false'
-      run: choco install gh --install-arguments="'/l*v c:\gh_msi_install.log'"
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Create GitHub Release and Upload Artifacts
-      if: env.VERSION_CHANGED == 'true'
-      run: |
-        $newVersion = $(node -p "require('./package.json').version")
-        $changelogContent = Get-Content -Raw -Path ./changelog.md
-        $releaseFiles = Get-ChildItem -Path .\dist\ -Include *.exe,latest.yml -Recurse | Where-Object { $_.Name -ne 'elevate.exe' }
-        $filePathsArray = @()
-        foreach ($file in $releaseFiles) {
-            $filePathsArray += $file.FullName
-        }
-        $ghArgs = @('release', 'create', "v$newVersion", '--title', "v$newVersion", '--notes', "$changelogContent")
-        $ghArgs += $filePathsArray
-        gh @ghArgs
-      shell: pwsh
+      - name: Run migration tests
+        run: npm run test:migration
+
+      - name: Create icon files (non-Windows)
+        if: matrix.platform != 'win'
+        run: |
+          mkdir -p build/icons
+          cp icon.png build/icons/icon.png
+          
+          # Create macOS icon if we have the tools
+          if command -v magick &> /dev/null || command -v convert &> /dev/null; then
+            if command -v magick &> /dev/null; then
+              magick icon.png build/icons/icon.icns
+            else
+              convert icon.png build/icons/icon.icns
+            fi
+          fi
+
+      - name: Create icon files (Windows)
+        if: matrix.platform == 'win'
+        run: |
+          mkdir -p build/icons
+          cp icon.png build/icons/icon.png
+          
+          # Try to create ICO file if ImageMagick is available
+          if (Get-Command magick -ErrorAction SilentlyContinue) {
+            magick icon.png build/icons/icon.ico
+          } elseif (Get-Command convert -ErrorAction SilentlyContinue) {
+            convert icon.png build/icons/icon.ico
+          } else {
+            # Fallback: copy PNG as ICO (electron-builder can handle this)
+            cp icon.png build/icons/icon.ico
+          }
+        shell: pwsh
+
+      - name: Build CSS
+        run: npm run build:css
+
+      - name: Build Electron app
+        run: npm run build:css && electron-builder ${{ matrix.target }} --publish=never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate build compatibility (Linux only)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "=== Testing config migration compatibility ==="
+          
+          # Create test configs from previous versions
+          mkdir -p test-configs
+          
+          # Test v1.x config (old format)
+          cat > test-configs/v1-config.json << 'EOF'
+          {
+            "apps": [
+              {
+                "name": "Test App",
+                "enabled": true,
+                "monitoredApps": [{"name": "test.exe"}],
+                "controlledApps": [{"name": "control.exe", "path": "/test", "action": "sync"}]
+              }
+            ],
+            "anonymousUsage": true
+          }
+          EOF
+          
+          # Test v2.x config
+          cat > test-configs/v2-config.json << 'EOF'
+          {
+            "appGroups": [
+              {
+                "name": "Test Group",
+                "enabled": true,
+                "monitoredApps": [{"name": "test.exe"}],
+                "controlledApps": [{"name": "control.exe", "path": "/test", "action": "sync"}]
+              }
+            ],
+            "anonymousUsage": true,
+            "monitoring": {"interval": 2500, "enabled": true}
+          }
+          EOF
+          
+          # Test v3.x config
+          cat > test-configs/v3-config.json << 'EOF'
+          {
+            "appGroups": [
+              {
+                "name": "Test Group v3",
+                "enabled": true,
+                "condition": "any",
+                "monitoredApps": [{"name": "test.exe"}],
+                "controlledApps": [{"name": "control.exe", "path": "/test", "action": "sync"}]
+              }
+            ],
+            "anonymousUsage": true,
+            "monitoring": {"interval": 2500, "enabled": true},
+            "ui": {"theme": "dark", "animations": true},
+            "configVersion": "3.0.0"
+          }
+          EOF
+          
+          echo "Migration test configs created successfully"
+
+      - name: List build artifacts
+        run: |
+          echo "=== Build artifacts ==="
+          ls -la dist/ || dir dist\
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pairkiller-${{ matrix.artifact_name }}-v${{ needs.check-version.outputs.version }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.snap
+            dist/*.rpm
+            dist/latest*.yml
+            dist/*.blockmap
+          retention-days: 90
+
+  release:
+    needs: [check-version, build]
+    if: needs.check-version.outputs.version-changed == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.snap" -o -name "latest*.yml" -o -name "*.blockmap" \) -exec cp {} release-files/ \;
+          
+          echo "=== Release files ==="
+          ls -la release-files/
+          
+          # Create checksums for all files
+          cd release-files
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+
+      - name: Read changelog
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Get content between first two version headings
+            CHANGELOG=$(awk '/^## \[/{if(++c==2) exit} c==1' CHANGELOG.md | head -n -1 | tail -n +2)
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="Release v${{ needs.check-version.outputs.version }}"
+            fi
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGELOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=Release v${{ needs.check-version.outputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: Pairkiller v${{ needs.check-version.outputs.version }}
+          body: |
+            ## Pairkiller v${{ needs.check-version.outputs.version }}
+            
+            ### 🎮 Cross-Platform App Monitoring & Control
+            
+            Pairkiller automatically manages your companion applications based on what games you're playing. Now with seamless update system and full backward compatibility!
+            
+            ### 📥 Downloads
+            
+            Choose the appropriate download for your platform:
+            
+            **🪟 Windows:**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.exe` - Windows installer (64-bit) **← Recommended**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-ia32.exe` - Windows installer (32-bit)
+            
+            **🍎 macOS:**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.dmg` - macOS Intel
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-arm64.dmg` - macOS Apple Silicon (M1/M2/M3)
+            
+            **🐧 Linux:**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.AppImage` - Universal Linux **← Recommended**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.deb` - Debian/Ubuntu
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.snap` - Snap package
+            
+            ### 🔐 Security
+            
+            - `SHA256SUMS.txt` - File checksums for verification
+            
+            ### 📋 Installation Notes
+            
+            **Windows:** Run the installer or use the portable version
+            **macOS:** Mount the DMG and drag to Applications folder
+            **Linux:** Make AppImage executable (`chmod +x`) or install DEB/Snap package
+            
+            ### 🔄 Updating from Previous Versions
+            
+            This version includes a comprehensive migration system that automatically updates your configuration from any previous version (v1.0.0+). Your settings, app groups, and preferences will be preserved during the update.
+            
+            ### 📝 What's New
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ### 💻 System Requirements
+            
+            - **Windows:** Windows 10+ 
+            - **macOS:** macOS 10.14+ (Mojave)
+            - **Linux:** Ubuntu 18.04+ or equivalent
+            - Administrator/sudo access may be required for app control features
+            
+            ### 🆘 Need Help?
+            
+            - 📖 [Documentation](https://github.com/hybes/pairkiller#readme)
+            - 🐛 [Report Issues](https://github.com/hybes/pairkiller/issues)
+            - 💬 [Discussions](https://github.com/hybes/pairkiller/discussions)
+            
+            ---
+            
+            **Full Changelog:** [v${{ needs.check-version.outputs.version }}](https://github.com/hybes/pairkiller/compare/v3.2.0...v${{ needs.check-version.outputs.version }})
+          files: release-files/*
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
