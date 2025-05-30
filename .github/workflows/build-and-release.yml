@@ -208,7 +208,7 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.snap
-            dist/*.rpm
+            dist/*.tar.gz
             dist/latest*.yml
             dist/*.blockmap
           retention-days: 90
@@ -230,15 +230,29 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release-files
-          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.snap" -o -name "latest*.yml" -o -name "*.blockmap" \) -exec cp {} release-files/ \;
+          
+          echo "=== Downloaded artifacts structure ==="
+          find artifacts -type f -name "*" | head -20
+          
+          # Copy all distribution files
+          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.snap" -o -name "*.tar.gz" -o -name "latest*.yml" -o -name "*.blockmap" \) -exec cp {} release-files/ \;
           
           echo "=== Release files ==="
           ls -la release-files/
           
-          # Create checksums for all files
-          cd release-files
-          sha256sum * > SHA256SUMS.txt
-          cd ..
+          # Check if we have any files
+          if [ "$(ls -A release-files/)" ]; then
+            echo "Found $(ls release-files/ | wc -l) release files"
+            # Create checksums for all files
+            cd release-files
+            sha256sum * > SHA256SUMS.txt
+            cd ..
+          else
+            echo "ERROR: No release files found!"
+            echo "=== Full artifacts directory structure ==="
+            find artifacts -type f -name "*" | sort
+            exit 1
+          fi
 
       - name: Read changelog
         id: changelog
