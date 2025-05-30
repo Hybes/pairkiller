@@ -1,6 +1,10 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+// Read current version from package.json
+const packageJson = require('./package.json');
+const CURRENT_VERSION = packageJson.version;
+
 // Simple version comparison function (copied from main.js)
 function compareVersions(a, b) {
     const aParts = a.split('.').map(Number);
@@ -20,11 +24,10 @@ function compareVersions(a, b) {
 // Config migration system (copied from main.js)
 async function migrateConfig(loadedConfig) {
     const configVersion = loadedConfig.configVersion || '1.0.0';
-    const currentVersion = '4.0.0';
     
     let migratedConfig = { ...loadedConfig };
     
-    console.log(`Migrating config from version ${configVersion} to ${currentVersion}`);
+    console.log(`Migrating config from version ${configVersion} to ${CURRENT_VERSION}`);
     
     // Migration from versions before 2.0.0
     if (compareVersions(configVersion, '2.0.0') < 0) {
@@ -86,8 +89,16 @@ async function migrateConfig(loadedConfig) {
         }
     }
     
+    // Migration from versions before 4.1.0
+    if (compareVersions(configVersion, '4.1.0') < 0) {
+        console.log('Applying migration for v4.1.0');
+        
+        // Add any new v4.1.0 specific settings here if needed
+        // For now, no specific changes required
+    }
+    
     // Update config version
-    migratedConfig.configVersion = currentVersion;
+    migratedConfig.configVersion = CURRENT_VERSION;
     
     console.log('Config migration completed');
     return migratedConfig;
@@ -157,8 +168,8 @@ async function testMigration() {
             console.log('Migrated config:', JSON.stringify(migratedConfig, null, 2));
             
             // Validate migration
-            if (migratedConfig.configVersion !== '4.0.0') {
-                throw new Error('Config version not updated to 4.0.0');
+            if (migratedConfig.configVersion !== CURRENT_VERSION) {
+                throw new Error(`Config version not updated to ${CURRENT_VERSION}`);
             }
             
             if (!Array.isArray(migratedConfig.appGroups)) {

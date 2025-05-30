@@ -1,7 +1,7 @@
 {
   "name": "pairkiller",
   "productName": "Pairkiller",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "A modern, flexible app monitoring and control system with enhanced UI and performance",
   "main": "main.js",
   "scripts": {
@@ -62,12 +62,14 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icons/icon.ico",
+      "icon": "build/icons/icon.png",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "requestedExecutionLevel": "asInvoker",
       "publisherName": "Ben Hybert"
     },
     "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icons/icon.png",
       "target": [
         {
           "target": "dmg",
@@ -78,34 +80,36 @@
           "arch": ["x64", "arm64"]
         }
       ],
-      "icon": "build/icons/icon.icns",
-      "category": "public.app-category.productivity",
-      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
-      "gatekeeperAssess": false,
-      "hardenedRuntime": true,
-      "type": "distribution",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "darkModeSupport": true,
+      "minimumSystemVersion": "10.14.0"
     },
     "linux": {
+      "category": "Utility",
+      "icon": "build/icons/icon.png",
       "target": [
         {
           "target": "AppImage",
           "arch": ["x64"]
         },
         {
-          "target": "snap",
+          "target": "deb",
           "arch": ["x64"]
         },
         {
-          "target": "deb",
+          "target": "rpm",
+          "arch": ["x64"]
+        },
+        {
+          "target": "tar.gz",
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icons/icon.png",
-      "category": "Utility",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "synopsis": "App monitoring and control system",
-      "description": "A modern, flexible app monitoring and control system with enhanced UI and performance"
+      "maintainer": "Ben Hybert <ben@example.com>",
+      "vendor": "Ben Hybert",
+      "synopsis": "Modern app monitoring and companion app management tool",
+      "description": "Pairkiller is a cross-platform application that monitors running programs and automatically manages companion applications. Perfect for gamers who want to automatically start/stop tools like Blitz, BakkesMod, or other companion apps when specific games are detected."
     },
     "dmg": {
       "title": "${productName} ${version}",

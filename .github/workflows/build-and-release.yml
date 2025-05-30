@@ -80,30 +80,11 @@ jobs:
       - name: Run migration tests
         run: npm run test:migration
 
-      - name: Create icon files (non-Windows)
-        if: matrix.platform != 'win'
+      - name: Prepare build icons
         run: |
           mkdir -p build/icons
           cp icon.png build/icons/icon.png
-          
-          # Create macOS icon if we have the tools
-          if command -v magick &> /dev/null || command -v convert &> /dev/null; then
-            if command -v magick &> /dev/null; then
-              magick icon.png build/icons/icon.icns
-            else
-              convert icon.png build/icons/icon.icns
-            fi
-          fi
-
-      - name: Create icon files (Windows)
-        if: matrix.platform == 'win'
-        run: |
-          New-Item -ItemType Directory -Force -Path "build/icons"
-          Copy-Item "icon.png" "build/icons/icon.png"
-          # Use PNG as ICO - electron-builder can handle this
-          Copy-Item "icon.png" "build/icons/icon.ico"
-          Write-Host "Created icon files for Windows build"
-        shell: pwsh
+        shell: bash
 
       - name: Build CSS
         run: npm run build:css

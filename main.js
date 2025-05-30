@@ -179,7 +179,7 @@ async function loadConfig() {
                     appGroups: Array.isArray(loadedConfig.appGroups) ? loadedConfig.appGroups : [],
                     anonymousUsage: loadedConfig.anonymousUsage !== undefined ? loadedConfig.anonymousUsage : true,
                     version: app.getVersion(),
-                    configVersion: loadedConfig.configVersion || '4.0.0',
+                    configVersion: loadedConfig.configVersion || app.getVersion(),
                     monitoring: {
                         interval: loadedConfig.monitoring?.interval || 2500,
                         enabled: loadedConfig.monitoring?.enabled !== false
@@ -209,7 +209,7 @@ async function loadConfig() {
                 appGroups: [],
                 anonymousUsage: true,
                 version: app.getVersion(),
-                configVersion: '4.0.0',
+                configVersion: app.getVersion(),
                 monitoring: { interval: 2500, enabled: true },
                 ui: { theme: 'dark', animations: true }
             };
@@ -236,7 +236,7 @@ async function loadConfig() {
             appGroups: [],
             anonymousUsage: true,
             version: app.getVersion(),
-            configVersion: '4.0.0',
+            configVersion: app.getVersion(),
             monitoring: { interval: 2500, enabled: true },
             ui: { theme: 'dark', animations: true }
         };
@@ -253,7 +253,7 @@ async function loadConfig() {
 // Config migration system to handle schema changes between versions
 async function migrateConfig(loadedConfig) {
     const configVersion = loadedConfig.configVersion || '1.0.0';
-    const currentVersion = '4.0.0';
+    const currentVersion = app.getVersion(); // Get version from package.json
     
     let migratedConfig = { ...loadedConfig };
     
@@ -320,6 +320,14 @@ async function migrateConfig(loadedConfig) {
                 }))
             }));
         }
+    }
+    
+    // Migration from versions before 4.1.0
+    if (compareVersions(configVersion, '4.1.0') < 0) {
+        debug('Applying migration for v4.1.0');
+        
+        // Add any new v4.1.0 specific settings here if needed
+        // For now, no specific changes required
     }
     
     // Update config version
