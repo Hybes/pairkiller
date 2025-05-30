@@ -46,6 +46,7 @@ jobs:
     needs: check-version
     if: needs.check-version.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -97,8 +98,8 @@ jobs:
       - name: Create icon files (Windows)
         if: matrix.platform == 'win'
         run: |
-          mkdir -p build/icons
-          cp icon.png build/icons/icon.png
+          New-Item -ItemType Directory -Force -Path "build/icons"
+          Copy-Item "icon.png" "build/icons/icon.png"
           
           # Try to create ICO file if ImageMagick is available
           if (Get-Command magick -ErrorAction SilentlyContinue) {
@@ -107,14 +108,33 @@ jobs:
             convert icon.png build/icons/icon.ico
           } else {
             # Fallback: copy PNG as ICO (electron-builder can handle this)
-            cp icon.png build/icons/icon.ico
+            Copy-Item "icon.png" "build/icons/icon.ico"
           }
         shell: pwsh
 
       - name: Build CSS
         run: npm run build:css
 
-      - name: Build Electron app
+      - name: Debug - List files before build
+        run: |
+          echo "=== Current directory contents ==="
+          ls -la || dir
+          echo "=== Build icons directory ==="
+          ls -la build/icons/ || dir build\icons\
+          echo "=== Node modules electron-builder ==="
+          ls -la node_modules/.bin/ | grep electron || dir node_modules\.bin\ | findstr electron
+        shell: bash
+
+      - name: Build Electron app (Windows)
+        if: matrix.platform == 'win'
+        run: |
+          npm run build:css
+          npx electron-builder --win --publish=never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Electron app (non-Windows)
+        if: matrix.platform != 'win'
         run: npm run build:css && npx electron-builder ${{ matrix.target }} --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
