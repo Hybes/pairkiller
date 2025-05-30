@@ -89,15 +89,26 @@ jobs:
       - name: Build CSS
         run: npm run build:css
 
-      - name: Debug - List files before build
+      - name: Debug - List files before build (Windows)
+        if: matrix.platform == 'win'
         run: |
           echo "=== Current directory contents ==="
-          ls -la || dir
+          dir
           echo "=== Build icons directory ==="
-          ls -la build/icons/ || dir build\icons\
+          dir build\icons\
           echo "=== Node modules electron-builder ==="
-          ls -la node_modules/.bin/ | grep electron || dir node_modules\.bin\ | findstr electron
-        shell: bash
+          dir node_modules\.bin\ | findstr electron
+        shell: cmd
+
+      - name: Debug - List files before build (Unix)
+        if: matrix.platform != 'win'
+        run: |
+          echo "=== Current directory contents ==="
+          ls -la
+          echo "=== Build icons directory ==="
+          ls -la build/icons/
+          echo "=== Node modules electron-builder ==="
+          ls -la node_modules/.bin/ | grep electron
 
       - name: Build Electron app (Windows)
         if: matrix.platform == 'win'
@@ -173,10 +184,18 @@ jobs:
           
           echo "Migration test configs created successfully"
 
-      - name: List build artifacts
+      - name: List build artifacts (Windows)
+        if: matrix.platform == 'win'
         run: |
           echo "=== Build artifacts ==="
-          ls -la dist/ || dir dist\
+          dir dist\
+        shell: cmd
+
+      - name: List build artifacts (Unix)
+        if: matrix.platform != 'win'
+        run: |
+          echo "=== Build artifacts ==="
+          ls -la dist/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
