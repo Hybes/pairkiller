@@ -113,8 +113,9 @@
     },
     "dmg": {
       "title": "${productName} ${version}",
-      "icon": "build/icons/icon.icns",
+      "icon": "build/icons/icon.png",
       "background": null,
+      "backgroundColor": "#ffffff",
       "contents": [
         {
           "x": 410,
