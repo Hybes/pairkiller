@@ -100,16 +100,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "build/icons"
           Copy-Item "icon.png" "build/icons/icon.png"
-          
-          # Try to create ICO file if ImageMagick is available
-          if (Get-Command magick -ErrorAction SilentlyContinue) {
-            magick icon.png build/icons/icon.ico
-          } elseif (Get-Command convert -ErrorAction SilentlyContinue) {
-            convert icon.png build/icons/icon.ico
-          } else {
-            # Fallback: copy PNG as ICO (electron-builder can handle this)
-            Copy-Item "icon.png" "build/icons/icon.ico"
-          }
+          # Use PNG as ICO - electron-builder can handle this
+          Copy-Item "icon.png" "build/icons/icon.ico"
+          Write-Host "Created icon files for Windows build"
         shell: pwsh
 
       - name: Build CSS
