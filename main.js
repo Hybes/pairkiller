@@ -1154,7 +1154,7 @@ function openAboutWindow() {
 }
 
 function openUpdateWindow() {
-    if (updateWindow) {
+    if (updateWindow && !updateWindow.isDestroyed()) {
         updateWindow.focus();
         return;
     }
@@ -1177,6 +1177,10 @@ function openUpdateWindow() {
     updateWindow.loadFile('update.html');
     updateWindow.once('ready-to-show', () => {
         updateWindow.show();
+    });
+    
+    updateWindow.on('closed', () => {
+        updateWindow = null;
     });
 }
 
@@ -1456,9 +1460,13 @@ autoUpdater.on('update-available', (info) => {
 
 autoUpdater.on('update-not-available', () => {
     console.log('[Pairkiller] No updates available');
-    if (updateWindow) {
+    if (updateWindow && !updateWindow.isDestroyed()) {
         updateWindow.webContents.send('update-status', 'You have the latest version.');
-        setTimeout(() => updateWindow.close(), 2000);
+        setTimeout(() => {
+            if (updateWindow && !updateWindow.isDestroyed()) {
+                updateWindow.close();
+            }
+        }, 2000);
     }
 });
 
@@ -1469,23 +1477,35 @@ autoUpdater.on('error', (err) => {
     if (err.message && err.message.includes('404')) {
         console.log('[Pairkiller] Auto-updater: Release files not found (404). This is normal for new releases or development builds.');
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'No updates available at this time');
-            setTimeout(() => updateWindow.close(), 2000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 2000);
         }
     } else if (err.message && err.message.includes('ENOTFOUND')) {
         console.log('[Pairkiller] Auto-updater: Network error - unable to reach update server.');
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Unable to check for updates - please check your internet connection');
-            setTimeout(() => updateWindow.close(), 3000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 3000);
         }
     } else if (err.message && err.message.includes('ECONNRESET')) {
         console.log('[Pairkiller] Auto-updater: Connection reset - retrying in 30 seconds.');
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Connection interrupted - will retry automatically');
-            setTimeout(() => updateWindow.close(), 3000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 3000);
         }
         
         // Retry after 30 seconds
@@ -1496,12 +1516,17 @@ autoUpdater.on('error', (err) => {
         }, 30000);
     } else if (err.message && (err.message.includes('code signature') || 
                                err.message.includes('code failed to satisfy') ||
-                               err.message.includes('validation'))) {
+                               err.message.includes('validation') ||
+                               err.message.includes('not signed by the application owner'))) {
         console.log('[Pairkiller] Auto-updater: Code signature validation failed. This can happen with beta builds or during development.');
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Update validation failed - please download manually from GitHub');
-            setTimeout(() => updateWindow.close(), 5000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 5000);
         }
         
         // Don't report code signature errors to Sentry - these are often environmental
@@ -1511,9 +1536,13 @@ autoUpdater.on('error', (err) => {
                                err.message.includes('access denied'))) {
         console.log('[Pairkiller] Auto-updater: Permission denied - app may need to be run as administrator for updates.');
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Permission denied - try running as administrator');
-            setTimeout(() => updateWindow.close(), 5000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 5000);
         }
         
         // Don't report permission errors to Sentry - these are user environment issues
@@ -1521,9 +1550,13 @@ autoUpdater.on('error', (err) => {
     } else if (err.message && err.message.includes('ENOSPC')) {
         console.log('[Pairkiller] Auto-updater: Insufficient disk space for update.');
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Insufficient disk space for update');
-            setTimeout(() => updateWindow.close(), 5000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 5000);
         }
         
         // Don't report disk space errors to Sentry
@@ -1557,9 +1590,13 @@ autoUpdater.on('error', (err) => {
             debug('Network/certificate error during update (not reporting to Sentry):', err.message);
         }
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Error checking for updates - please try again later');
-            setTimeout(() => updateWindow.close(), 3000);
+            setTimeout(() => {
+                if (updateWindow && !updateWindow.isDestroyed()) {
+                    updateWindow.close();
+                }
+            }, 3000);
         }
     }
 });
@@ -1568,7 +1605,7 @@ autoUpdater.on('download-progress', (progress) => {
     const percent = Math.round(progress.percent);
     console.log(`[Pairkiller] Download progress: ${percent}%`);
     
-    if (updateWindow) {
+    if (updateWindow && !updateWindow.isDestroyed()) {
         updateWindow.webContents.send('update-progress', percent);
         updateWindow.webContents.send('update-status', `Downloading update: ${percent}%`);
     }
@@ -1582,14 +1619,14 @@ autoUpdater.on('update-downloaded', (info) => {
         silent: false
     }).show();
     
-    if (updateWindow) {
+    if (updateWindow && !updateWindow.isDestroyed()) {
         updateWindow.webContents.send('update-status', `Update v${info.version} ready to install`);
         updateWindow.webContents.send('update-downloaded', info);
     }
     
     // Auto-install after 10 seconds if user doesn't manually trigger it
     setTimeout(() => {
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.close();
         }
         autoUpdater.quitAndInstall(false, true);
@@ -1856,7 +1893,7 @@ ipcMain.on('check-for-updates', () => {
     debug('Manual update check requested');
     autoUpdater.checkForUpdatesAndNotify().catch(err => {
         console.error('Manual update check failed:', err);
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Failed to check for updates');
         }
     });
@@ -1870,7 +1907,7 @@ ipcMain.on('install-update', async () => {
         await createConfigBackup();
         
         // Notify user of installation
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Installing update...');
         }
         
@@ -1888,7 +1925,7 @@ ipcMain.on('install-update', async () => {
             tags: { component: 'update-installation' }
         });
         
-        if (updateWindow) {
+        if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Error preparing update - please try again');
         }
     }
