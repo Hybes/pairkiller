@@ -70,6 +70,7 @@ let updateWindow;
 let settingsWindow;
 let aboutWindow;
 let configPath;
+let backgroundMode = true; // Default to background mode on macOS
 let config = {
     appGroups: [],
     anonymousUsage: true,
@@ -80,7 +81,8 @@ let config = {
     },
     ui: {
         theme: 'dark',
-        animations: true
+        animations: true,
+        backgroundMode: isMacOS // Default background mode on macOS
     }
 };
 
@@ -287,7 +289,16 @@ async function migrateConfig(loadedConfig) {
         
         // Add UI settings if missing
         if (!migratedConfig.ui) {
-            migratedConfig.ui = { theme: 'dark', animations: true };
+            migratedConfig.ui = { 
+                theme: 'dark', 
+                animations: true,
+                backgroundMode: isMacOS // Default to background mode on macOS
+            };
+        } else {
+            // Ensure backgroundMode is set for macOS
+            if (isMacOS && migratedConfig.ui.backgroundMode === undefined) {
+                migratedConfig.ui.backgroundMode = true;
+            }
         }
         
         // Ensure each app group has required fields
@@ -381,30 +392,56 @@ async function isTaskRunning(processName) {
         let isRunning = false;
         
         if (isWindows) {
-            const { stdout } = await execPromise(`tasklist /FI "IMAGENAME eq ${processName}" /NH`);
-            isRunning = stdout.toLowerCase().includes(processName.toLowerCase());
+            try {
+                const { stdout } = await execPromise(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, { timeout: 5000 });
+                isRunning = stdout.toLowerCase().includes(processName.toLowerCase());
+            } catch (error) {
+                // Handle common Windows errors that shouldn't be reported
+                if (error.message.includes('Access is denied') || 
+                    error.message.includes('timeout') ||
+                    error.code === 'ETIMEDOUT') {
+                    debug(`Process check failed for ${processName} (access/timeout issue):`, error.message);
+                    isRunning = false;
+                } else {
+                    throw error; // Re-throw unexpected errors
+                }
+            }
         } else if (isMacOS) {
             // On macOS, we need to handle both .app bundles and executable names
             const appName = processName.replace('.exe', '');
             
             try {
                 // First try to find the process by name
-                const { stdout } = await execPromise(`pgrep -f "${appName}"`);
+                const { stdout } = await execPromise(`pgrep -f "${appName}"`, { timeout: 5000 });
                 isRunning = stdout.trim().length > 0;
             } catch (error) {
                 // If pgrep fails, try ps command as fallback
                 try {
-                    const { stdout } = await execPromise(`ps aux | grep -i "${appName}" | grep -v grep`);
+                    const { stdout } = await execPromise(`ps aux | grep -i "${appName}" | grep -v grep`, { timeout: 5000 });
                     isRunning = stdout.trim().length > 0;
                 } catch (psError) {
+                    // Both methods failed - likely no process found or permission issue
+                    debug(`Process check failed for ${processName}:`, psError.message);
                     isRunning = false;
                 }
             }
         } else {
             // Linux/other Unix systems
-            const appName = processName.replace('.exe', '');
-            const { stdout } = await execPromise(`pgrep -f "${appName}"`);
-            isRunning = stdout.trim().length > 0;
+            try {
+                const appName = processName.replace('.exe', '');
+                const { stdout } = await execPromise(`pgrep -f "${appName}"`, { timeout: 5000 });
+                isRunning = stdout.trim().length > 0;
+            } catch (error) {
+                // Handle permission or timeout errors
+                if (error.message.includes('Permission denied') || 
+                    error.message.includes('timeout') ||
+                    error.code === 'ETIMEDOUT') {
+                    debug(`Process check failed for ${processName} (permission/timeout issue):`, error.message);
+                    isRunning = false;
+                } else {
+                    throw error; // Re-throw unexpected errors
+                }
+            }
         }
         
         processCache.set(processName, {
@@ -415,6 +452,32 @@ async function isTaskRunning(processName) {
         return isRunning;
     } catch (error) {
         debug(`Error checking if ${processName} is running:`, error);
+        
+        // Only report truly unexpected errors to Sentry
+        const shouldReport = !error.message.includes('timeout') &&
+                           !error.message.includes('Access is denied') &&
+                           !error.message.includes('Permission denied') &&
+                           !error.message.includes('No such process') &&
+                           !error.code === 'ETIMEDOUT' &&
+                           !error.code === 'EACCES';
+        
+        if (shouldReport) {
+            Sentry.captureException(error, {
+                tags: { 
+                    function: 'isTaskRunning', 
+                    platform,
+                    processName,
+                    errorType: 'process_check_error'
+                },
+                extra: { 
+                    processName,
+                    errorCode: error.code,
+                    signal: error.signal
+                },
+                level: 'warning'
+            });
+        }
+        
         processCache.set(processName, {
             running: false,
             timestamp: now
@@ -532,6 +595,14 @@ async function startMonitoring() {
 
                 if (shouldBeRunning && !isRunning) {
                     debug(`Starting ${app.name}`);
+                    
+                    // Validate app path before attempting to launch
+                    const validation = await validateAppPath(app.path || app.name);
+                    if (!validation.valid) {
+                        debug(`Skipping launch of ${app.name}: ${validation.reason}`);
+                        return; // Don't attempt to launch invalid apps
+                    }
+                    
                     await ensureAppIsRunning(app.path || app.name);
                 } else if (!shouldBeRunning && isRunning) {
                     debug(`Stopping ${app.name}`);
@@ -539,7 +610,26 @@ async function startMonitoring() {
                 }
             } catch (error) {
                 console.error(`Error processing controlled app ${app.name}:`, error);
-                Sentry.captureException(error);
+                
+                // Only report unexpected errors to Sentry
+                if (!error.message.includes('ENOENT') && 
+                    !error.message.includes('access') &&
+                    !error.message.includes('permission') &&
+                    !error.message.includes('timeout')) {
+                    Sentry.captureException(error, {
+                        tags: { 
+                            function: 'processControlledApp',
+                            appName: app.name,
+                            platform
+                        },
+                        extra: {
+                            appPath: app.path,
+                            appAction: app.action,
+                            shouldTakeAction
+                        },
+                        level: 'warning'
+                    });
+                }
             }
         }
 
@@ -597,6 +687,15 @@ async function ensureAppIsRunning(appPath) {
         const appName = path.basename(appPath);
         debug(`Ensuring app is running: ${appName} from path:`, appPath);
         
+        // First check if the app file exists
+        try {
+            await fs.access(appPath);
+        } catch (accessError) {
+            debug(`App path does not exist: ${appPath}`);
+            // Don't throw error to Sentry for missing app paths - this is user configuration issue
+            return;
+        }
+        
         const isAppRunning = await isTaskRunning(appName);
         if (!isAppRunning) {
             debug(`Starting app: ${appName}`);
@@ -605,6 +704,7 @@ async function ensureAppIsRunning(appPath) {
                 let command;
                 
                 if (isWindows) {
+                    // Escape the path properly for Windows
                     command = `"${appPath}"`;
                 } else if (isMacOS) {
                     if (appPath.endsWith('.app')) {
@@ -617,14 +717,42 @@ async function ensureAppIsRunning(appPath) {
                     command = `"${appPath}" &`;
                 }
                 
-                exec(command, (error, stdout, stderr) => {
+                exec(command, { timeout: 10000 }, (error, stdout, stderr) => {
                     if (error) {
-                        console.error(`Error starting ${appName}:`, error);
+                        // Check for common error types that shouldn't be reported to Sentry
+                        const errorMessage = error.message.toLowerCase();
+                        
+                        if (errorMessage.includes('access is denied') || 
+                            errorMessage.includes('permission denied') ||
+                            errorMessage.includes('file not found') ||
+                            errorMessage.includes('no such file') ||
+                            errorMessage.includes('cannot find the file') ||
+                            errorMessage.includes('the system cannot find the file')) {
+                            
+                            debug(`App launch failed (user config issue): ${appName} - ${error.message}`);
+                            // These are configuration issues, not app bugs - don't send to Sentry
+                            resolve(); // Resolve instead of reject to prevent monitoring from stopping
+                            return;
+                        }
+                        
+                        // Only report unexpected errors to Sentry
+                        console.error(`Unexpected error starting ${appName}:`, error);
                         Sentry.captureException(error, {
-                            tags: { function: 'ensureAppIsRunning', platform },
-                            extra: { appPath, appName, command }
+                            tags: { 
+                                function: 'ensureAppIsRunning', 
+                                platform,
+                                errorType: 'unexpected_launch_error'
+                            },
+                            extra: { 
+                                appPath, 
+                                appName, 
+                                command,
+                                errorCode: error.code,
+                                signal: error.signal
+                            },
+                            level: 'warning' // Reduce severity since app might still work
                         });
-                        reject(error);
+                        resolve(); // Don't reject to keep monitoring running
                     } else {
                         debug(`Successfully launched ${appName}`);
                         resolve();
@@ -635,9 +763,17 @@ async function ensureAppIsRunning(appPath) {
             debug(`App ${appName} is already running`);
         }
     } catch (error) {
-        console.error(`Failed to ensure app is running: ${appPath}`, error);
-        Sentry.captureException(error);
-        throw error;
+        // Only log unexpected errors
+        debug(`Unexpected error in ensureAppIsRunning for ${appPath}:`, error);
+        
+        // Don't throw or report to Sentry unless it's truly unexpected
+        if (!error.message.includes('ENOENT') && !error.message.includes('access')) {
+            Sentry.captureException(error, {
+                tags: { function: 'ensureAppIsRunning', platform },
+                extra: { appPath },
+                level: 'warning'
+            });
+        }
     }
 }
 
@@ -658,14 +794,43 @@ async function stopApp(appName) {
                 command = `pkill -f "${processNameWithoutExt}"`;
             }
             
-            exec(command, (error, stdout, stderr) => {
-                if (error && !error.message.includes('not found') && !error.message.includes('No such process')) {
-                    console.error(`Error stopping ${appName}:`, error);
+            exec(command, { timeout: 5000 }, (error, stdout, stderr) => {
+                if (error) {
+                    // Handle common errors that shouldn't be reported to Sentry
+                    const errorMessage = error.message.toLowerCase();
+                    
+                    if (errorMessage.includes('not found') || 
+                        errorMessage.includes('no such process') ||
+                        errorMessage.includes('access is denied') ||
+                        errorMessage.includes('permission denied') ||
+                        errorMessage.includes('no matching processes') ||
+                        errorMessage.includes('timeout') ||
+                        error.code === 'ETIMEDOUT' ||
+                        error.code === 1) { // Exit code 1 often means "no process found"
+                        
+                        debug(`App stop completed for ${appName} (process not found or permission issue):`, error.message);
+                        resolve(); // Resolve since the goal (app not running) is achieved
+                        return;
+                    }
+                    
+                    // Only report unexpected errors
+                    console.error(`Unexpected error stopping ${appName}:`, error);
                     Sentry.captureException(error, {
-                        tags: { platform },
-                        extra: { appName, command }
+                        tags: { 
+                            function: 'stopApp',
+                            platform,
+                            errorType: 'unexpected_stop_error'
+                        },
+                        extra: { 
+                            appName, 
+                            command,
+                            errorCode: error.code,
+                            signal: error.signal,
+                            stderr: stderr
+                        },
+                        level: 'warning'
                     });
-                    reject(error);
+                    resolve(); // Still resolve to keep monitoring running
                 } else {
                     debug(`Successfully stopped ${appName}`);
                     resolve();
@@ -673,9 +838,20 @@ async function stopApp(appName) {
             });
         });
     } catch (error) {
-        console.error(`Failed to stop app: ${appName}`, error);
-        Sentry.captureException(error);
-        throw error;
+        debug(`Unexpected error in stopApp for ${appName}:`, error);
+        
+        // Only report truly unexpected errors
+        if (!error.message.includes('timeout') && 
+            !error.message.includes('permission') &&
+            !error.message.includes('access')) {
+            Sentry.captureException(error, {
+                tags: { function: 'stopApp', platform },
+                extra: { appName },
+                level: 'warning'
+            });
+        }
+        
+        // Don't throw - resolve to keep monitoring running
     }
 }
 
@@ -683,17 +859,26 @@ async function stopApp(appName) {
 function setupTray() {
     try {
         if (isMacOS) {
-            // On macOS, we'll use both dock and system tray
-            // Dock is primary, tray is secondary
-            setupDock();
-            // Still create tray for consistency, but make it less prominent
+            // On macOS, tray is primary interface in background mode
             tray = new Tray(path.join(__dirname, 'icon.png'));
             tray.setToolTip('Pairkiller - Right-click for options');
+            
+            // Handle tray clicks on macOS
+            tray.on('click', () => {
+                // Single click opens settings
+                openSettingsWindow();
+            });
+            
+            // Only set up dock if not in background mode
+            if (!backgroundMode) {
+                setupDock();
+            }
         } else {
             // On Windows/Linux, use system tray as primary
             tray = new Tray(path.join(__dirname, 'icon.png'));
             tray.setToolTip('Pairkiller - App Monitor & Controller');
             tray.on('double-click', () => openSettingsWindow());
+            tray.on('click', () => openSettingsWindow());
         }
         
         updateTrayMenu();
@@ -701,11 +886,6 @@ function setupTray() {
         tray.on('right-click', () => {
             tray.popUpContextMenu();
         });
-        
-        // On non-Mac, also handle left click
-        if (!isMacOS) {
-            tray.on('click', () => openSettingsWindow());
-        }
         
     } catch (error) {
         console.error('Error setting up tray:', error);
@@ -785,15 +965,26 @@ function updateTrayMenu() {
             label: `📊 Groups: ${config.appGroups.length}`,
             enabled: false
         },
-        { type: 'separator' },
-        { 
-            label: '🔄 Check for Updates',
-            click: () => {
-                autoUpdater.checkForUpdatesAndNotify();
-            }
-        },
         { type: 'separator' }
     ];
+    
+    // Add macOS-specific options
+    if (isMacOS) {
+        menuTemplate.push({
+            label: backgroundMode ? '🖥️ Show in Dock' : '🫥 Hide from Dock',
+            click: () => toggleBackgroundMode()
+        });
+        menuTemplate.push({ type: 'separator' });
+    }
+    
+    menuTemplate.push({ 
+        label: '🔄 Check for Updates',
+        click: () => {
+            autoUpdater.checkForUpdatesAndNotify();
+        }
+    });
+    
+    menuTemplate.push({ type: 'separator' });
     
     // Add quit option - different behavior on macOS
     if (isMacOS) {
@@ -818,10 +1009,39 @@ function updateTrayMenu() {
     const contextMenu = Menu.buildFromTemplate(menuTemplate);
     tray.setContextMenu(contextMenu);
     
-    // Update dock menu on macOS
-    if (isMacOS) {
+    // Update dock menu on macOS if visible
+    if (isMacOS && !backgroundMode) {
         setupDock();
     }
+}
+
+// Toggle background mode on macOS
+function toggleBackgroundMode() {
+    if (!isMacOS) return;
+    
+    backgroundMode = !backgroundMode;
+    config.ui.backgroundMode = backgroundMode;
+    
+    if (backgroundMode) {
+        // Hide from dock and cmd+tab
+        if (app.dock) {
+            app.dock.hide();
+        }
+        debug('Switched to background mode - hidden from dock');
+    } else {
+        // Show in dock and cmd+tab
+        if (app.dock) {
+            app.dock.show();
+        }
+        setupDock();
+        debug('Switched to foreground mode - visible in dock');
+    }
+    
+    // Save the preference
+    saveConfig().catch(console.error);
+    
+    // Update tray menu to reflect new state
+    updateTrayMenu();
 }
 
 // Enhanced window management
@@ -831,7 +1051,9 @@ function openSettingsWindow() {
             // On macOS, bring window to front and focus
             settingsWindow.show();
             settingsWindow.focus();
-            app.focus();
+            if (!backgroundMode) {
+                app.focus();
+            }
         } else {
             settingsWindow.focus();
         }
@@ -854,7 +1076,9 @@ function openSettingsWindow() {
         titleBarOverlay: {
             color: '#1c1917',
             symbolColor: '#f5f5f4'
-        }
+        },
+        // On macOS in background mode, don't show in dock when window opens
+        skipTaskbar: isMacOS && backgroundMode
     });
 
     settingsWindow.loadFile('settings.html');
@@ -862,9 +1086,11 @@ function openSettingsWindow() {
     settingsWindow.once('ready-to-show', () => {
         settingsWindow.show();
         if (isMacOS) {
-            // On macOS, ensure the app comes to front
-            app.focus();
+            // On macOS, ensure the window comes to front
             settingsWindow.focus();
+            if (!backgroundMode) {
+                app.focus();
+            }
         }
         if (process.env.NODE_ENV === 'development') {
             settingsWindow.webContents.openDevTools();
@@ -873,8 +1099,8 @@ function openSettingsWindow() {
 
     settingsWindow.on('closed', () => {
         settingsWindow = null;
-        // On macOS, update dock menu when window closes
-        if (isMacOS) {
+        // On macOS, update dock menu when window closes (if visible)
+        if (isMacOS && !backgroundMode) {
             setupDock();
         }
     });
@@ -885,7 +1111,9 @@ function openAboutWindow() {
         if (isMacOS) {
             aboutWindow.show();
             aboutWindow.focus();
-            app.focus();
+            if (!backgroundMode) {
+                app.focus();
+            }
         } else {
             aboutWindow.focus();
         }
@@ -905,15 +1133,18 @@ function openAboutWindow() {
         minimizable: false,
         backgroundColor: '#1c1917',
         show: false,
-        titleBarStyle: isMacOS ? 'hiddenInset' : 'hidden'
+        titleBarStyle: isMacOS ? 'hiddenInset' : 'hidden',
+        skipTaskbar: isMacOS && backgroundMode
     });
 
     aboutWindow.loadFile('about.html');
     aboutWindow.once('ready-to-show', () => {
         aboutWindow.show();
         if (isMacOS) {
-            app.focus();
             aboutWindow.focus();
+            if (!backgroundMode) {
+                app.focus();
+            }
         }
     });
 
@@ -939,7 +1170,8 @@ function openUpdateWindow() {
         resizable: false,
         frame: false,
         backgroundColor: '#1c1917',
-        show: false
+        show: false,
+        skipTaskbar: isMacOS && backgroundMode
     });
     
     updateWindow.loadFile('update.html');
@@ -961,19 +1193,78 @@ ipcMain.handle('get-presets', () => {
     return defaultPresets;
 });
 
+// Validate configuration before saving
+async function validateConfig(newConfig) {
+    const issues = [];
+    
+    if (!Array.isArray(newConfig.appGroups)) {
+        issues.push('Invalid app groups configuration');
+        return { valid: false, issues };
+    }
+    
+    for (let i = 0; i < newConfig.appGroups.length; i++) {
+        const group = newConfig.appGroups[i];
+        
+        if (!group.name || typeof group.name !== 'string') {
+            issues.push(`App group ${i + 1}: Missing or invalid name`);
+        }
+        
+        if (!Array.isArray(group.controlledApps)) {
+            issues.push(`App group "${group.name}": Invalid controlled apps configuration`);
+            continue;
+        }
+        
+        // Validate controlled app paths
+        for (let j = 0; j < group.controlledApps.length; j++) {
+            const app = group.controlledApps[j];
+            
+            if (!app.name) {
+                issues.push(`App group "${group.name}", app ${j + 1}: Missing app name`);
+                continue;
+            }
+            
+            if (app.path && app.path.trim() !== '') {
+                const validation = await validateAppPath(app.path);
+                if (!validation.valid) {
+                    issues.push(`App group "${group.name}", app "${app.name}": ${validation.reason}`);
+                }
+            }
+        }
+    }
+    
+    return { valid: issues.length === 0, issues };
+}
+
 ipcMain.handle('save-settings', async (event, newConfig) => {
     try {
         debug('Saving new settings');
         
         // Validate configuration
-        if (!Array.isArray(newConfig.appGroups)) {
-            throw new Error('Invalid app groups configuration');
+        const validation = await validateConfig(newConfig);
+        if (!validation.valid) {
+            return { 
+                success: false, 
+                error: 'Configuration validation failed', 
+                issues: validation.issues 
+            };
         }
         
         // Update config
         config.appGroups = newConfig.appGroups;
         config.monitoring = { ...config.monitoring, ...newConfig.monitoring };
         config.ui = { ...config.ui, ...newConfig.ui };
+        
+        // Handle background mode changes on macOS
+        if (isMacOS && config.ui.backgroundMode !== backgroundMode) {
+            backgroundMode = config.ui.backgroundMode;
+            if (backgroundMode) {
+                if (app.dock) app.dock.hide();
+            } else {
+                if (app.dock) app.dock.show();
+                setupDock();
+            }
+            updateTrayMenu();
+        }
         
         await saveConfig();
         debug('Settings saved successfully');
@@ -987,8 +1278,20 @@ ipcMain.handle('save-settings', async (event, newConfig) => {
         return { success: true };
     } catch (error) {
         console.error('Error saving settings:', error);
-        Sentry.captureException(error);
+        Sentry.captureException(error, {
+            tags: { function: 'save-settings' },
+            level: 'error'
+        });
         return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('validate-app-path', async (event, appPath) => {
+    try {
+        const validation = await validateAppPath(appPath);
+        return validation;
+    } catch (error) {
+        return { valid: false, reason: `Validation error: ${error.message}` };
     }
 });
 
@@ -1112,6 +1415,22 @@ ipcMain.on('toggle-usage-collection', async (event, value) => {
 
 ipcMain.handle('get-usage-collection', () => config.anonymousUsage);
 
+ipcMain.handle('toggle-background-mode', async () => {
+    if (!isMacOS) return { success: false, error: 'Background mode only available on macOS' };
+    
+    try {
+        toggleBackgroundMode();
+        return { success: true, backgroundMode };
+    } catch (error) {
+        console.error('Error toggling background mode:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('get-background-mode', () => {
+    return { backgroundMode: isMacOS ? backgroundMode : false };
+});
+
 // Auto-updater configuration
 autoUpdater.setFeedURL({
     provider: 'github',
@@ -1175,19 +1494,68 @@ autoUpdater.on('error', (err) => {
                 autoUpdater.checkForUpdates().catch(console.error);
             }
         }, 30000);
+    } else if (err.message && (err.message.includes('code signature') || 
+                               err.message.includes('code failed to satisfy') ||
+                               err.message.includes('validation'))) {
+        console.log('[Pairkiller] Auto-updater: Code signature validation failed. This can happen with beta builds or during development.');
+        
+        if (updateWindow) {
+            updateWindow.webContents.send('update-status', 'Update validation failed - please download manually from GitHub');
+            setTimeout(() => updateWindow.close(), 5000);
+        }
+        
+        // Don't report code signature errors to Sentry - these are often environmental
+        debug('Code signature validation error (not reporting to Sentry):', err.message);
+    } else if (err.message && (err.message.includes('EACCES') || 
+                               err.message.includes('permission denied') ||
+                               err.message.includes('access denied'))) {
+        console.log('[Pairkiller] Auto-updater: Permission denied - app may need to be run as administrator for updates.');
+        
+        if (updateWindow) {
+            updateWindow.webContents.send('update-status', 'Permission denied - try running as administrator');
+            setTimeout(() => updateWindow.close(), 5000);
+        }
+        
+        // Don't report permission errors to Sentry - these are user environment issues
+        debug('Permission error during update (not reporting to Sentry):', err.message);
+    } else if (err.message && err.message.includes('ENOSPC')) {
+        console.log('[Pairkiller] Auto-updater: Insufficient disk space for update.');
+        
+        if (updateWindow) {
+            updateWindow.webContents.send('update-status', 'Insufficient disk space for update');
+            setTimeout(() => updateWindow.close(), 5000);
+        }
+        
+        // Don't report disk space errors to Sentry
+        debug('Disk space error during update (not reporting to Sentry):', err.message);
     } else {
-        // For other errors, capture in Sentry and show to user
-        Sentry.captureException(err, {
-            tags: { 
-                component: 'auto-updater',
-                platform: process.platform,
-                version: app.getVersion()
-            },
-            extra: {
-                environment: process.env.NODE_ENV || 'production',
-                updateFeedUrl: autoUpdater.getFeedURL()
-            }
-        });
+        // For other errors, capture in Sentry but with reduced severity and better filtering
+        const shouldReport = !err.message.includes('net::') && 
+                           !err.message.includes('fetch') &&
+                           !err.message.includes('timeout') &&
+                           !err.message.includes('certificate') &&
+                           !err.message.includes('SSL') &&
+                           !err.message.includes('TLS');
+        
+        if (shouldReport) {
+            Sentry.captureException(err, {
+                tags: { 
+                    component: 'auto-updater',
+                    platform: process.platform,
+                    version: app.getVersion(),
+                    errorType: 'updater_error'
+                },
+                extra: {
+                    environment: process.env.NODE_ENV || 'production',
+                    updateFeedUrl: autoUpdater.getFeedURL(),
+                    errorCode: err.code,
+                    errorName: err.name
+                },
+                level: 'warning' // Reduce severity for updater errors
+            });
+        } else {
+            debug('Network/certificate error during update (not reporting to Sentry):', err.message);
+        }
         
         if (updateWindow) {
             updateWindow.webContents.send('update-status', 'Error checking for updates - please try again later');
@@ -1250,19 +1618,32 @@ async function initialize() {
         // Load configuration first
         await loadConfig();
         
+        // Set background mode from config
+        if (isMacOS && config.ui && config.ui.backgroundMode !== undefined) {
+            backgroundMode = config.ui.backgroundMode;
+        }
+        
         // Set up platform-specific UI
         if (isMacOS) {
-            // On macOS, ensure dock icon is visible
-            if (app.dock) {
-                app.dock.show();
+            if (backgroundMode) {
+                // Start in background mode - hide dock icon
+                if (app.dock) {
+                    app.dock.hide();
+                }
+                debug('Starting in background mode - hidden from dock');
+            } else {
+                // Show in dock and set up dock menu
+                if (app.dock) {
+                    app.dock.show();
+                }
+                setupDock();
+                debug('Starting in foreground mode - visible in dock');
             }
-            // Set up dock behavior
-            setupDock();
-            // Set up menu bar
+            // Always set up menu bar
             setupMenuBar();
         }
         
-        // Set up tray/dock menu
+        // Set up tray (primary interface on macOS in background mode)
         setupTray();
         
         // Start monitoring
@@ -1270,9 +1651,9 @@ async function initialize() {
         
         debug('Application initialized successfully');
         
-        // On first run or if no windows are open, show settings on macOS
-        if (isMacOS && (!settingsWindow && !aboutWindow && !updateWindow)) {
-            debug('No windows open on macOS - opening settings window');
+        // On macOS, only auto-open settings if not in background mode
+        if (isMacOS && !backgroundMode && (!settingsWindow && !aboutWindow && !updateWindow)) {
+            debug('No windows open on macOS (foreground mode) - opening settings window');
             setTimeout(() => openSettingsWindow(), 1000);
         }
         
@@ -1306,9 +1687,9 @@ app.on('window-all-closed', (e) => {
     }
 });
 
-// Handle macOS dock icon clicks
+// Handle macOS dock icon clicks (only when visible)
 app.on('activate', () => {
-    if (isMacOS) {
+    if (isMacOS && !backgroundMode) {
         // This is called when the dock icon is clicked on macOS
         debug('App activated (dock icon clicked) - opening settings window');
         openSettingsWindow();
@@ -1383,6 +1764,11 @@ function setupMenuBar() {
                             startMonitoring();
                         }
                     }
+                },
+                { type: 'separator' },
+                {
+                    label: backgroundMode ? 'Show in Dock' : 'Hide from Dock',
+                    click: () => toggleBackgroundMode()
                 },
                 { type: 'separator' },
                 {
@@ -1564,5 +1950,36 @@ async function restoreConfigFromBackup() {
     } catch (error) {
         console.error('Error restoring config from backup:', error);
         return false;
+    }
+}
+
+// Validate app path before attempting to launch
+async function validateAppPath(appPath) {
+    if (!appPath || typeof appPath !== 'string' || appPath.trim() === '') {
+        return { valid: false, reason: 'Empty or invalid path' };
+    }
+    
+    try {
+        // Check if file exists
+        await fs.access(appPath);
+        
+        // Additional platform-specific validation
+        if (isWindows) {
+            if (!appPath.toLowerCase().endsWith('.exe') && 
+                !appPath.toLowerCase().endsWith('.bat') && 
+                !appPath.toLowerCase().endsWith('.cmd')) {
+                return { valid: false, reason: 'Not a valid Windows executable' };
+            }
+        } else if (isMacOS) {
+            // On macOS, check if it's an .app bundle or executable
+            const stats = await fs.stat(appPath);
+            if (!stats.isFile() && !appPath.endsWith('.app')) {
+                return { valid: false, reason: 'Not a valid macOS application' };
+            }
+        }
+        
+        return { valid: true };
+    } catch (error) {
+        return { valid: false, reason: `File not accessible: ${error.message}` };
     }
 }
