@@ -71,12 +71,13 @@ let settingsWindow;
 let aboutWindow;
 let configPath;
 let backgroundMode = true; // Default to background mode on macOS
+let isUpdating = false; // Flag to prevent operations during updates
 let config = {
     appGroups: [],
     anonymousUsage: true,
     version: app.getVersion(),
     monitoring: {
-        interval: 2500,
+        interval: 5000,
         enabled: true
     },
     ui: {
@@ -88,7 +89,11 @@ let config = {
 
 // Performance monitoring cache
 const processCache = new Map();
-const CACHE_DURATION = 1000; // 1 second cache
+const CACHE_DURATION = 5000; // 5 second cache - reduced frequency
+
+// Batch processing optimization
+let isProcessingBatch = false;
+const batchQueue = new Set();
 
 // Initialize config path
 configPath = path.join(app.getPath('userData'), 'config.json');
@@ -183,7 +188,7 @@ async function loadConfig() {
                     version: app.getVersion(),
                     configVersion: loadedConfig.configVersion || app.getVersion(),
                     monitoring: {
-                        interval: loadedConfig.monitoring?.interval || 2500,
+                        interval: loadedConfig.monitoring?.interval || 5000,
                         enabled: loadedConfig.monitoring?.enabled !== false
                     },
                     ui: {
@@ -212,7 +217,7 @@ async function loadConfig() {
                 anonymousUsage: true,
                 version: app.getVersion(),
                 configVersion: app.getVersion(),
-                monitoring: { interval: 2500, enabled: true },
+                monitoring: { interval: 5000, enabled: true },
                 ui: { theme: 'dark', animations: true }
             };
             
@@ -239,7 +244,7 @@ async function loadConfig() {
             anonymousUsage: true,
             version: app.getVersion(),
             configVersion: app.getVersion(),
-            monitoring: { interval: 2500, enabled: true },
+            monitoring: { interval: 5000, enabled: true },
             ui: { theme: 'dark', animations: true }
         };
         
@@ -279,7 +284,7 @@ async function migrateConfig(loadedConfig) {
         
         // Add default monitoring settings if missing
         if (!migratedConfig.monitoring) {
-            migratedConfig.monitoring = { interval: 2500, enabled: true };
+            migratedConfig.monitoring = { interval: 5000, enabled: true };
         }
     }
     
@@ -379,7 +384,7 @@ async function saveConfig() {
     }
 }
 
-// Optimized process checking with caching - now cross-platform
+// Optimized process checking with caching and batching - now cross-platform
 async function isTaskRunning(processName) {
     const now = Date.now();
     const cached = processCache.get(processName);
@@ -388,22 +393,36 @@ async function isTaskRunning(processName) {
         return cached.running;
     }
     
+    // Add to batch queue if system is under load
+    if (isProcessingBatch) {
+        batchQueue.add(processName);
+        return cached ? cached.running : false;
+    }
+    
     try {
+        isProcessingBatch = true;
         let isRunning = false;
         
         if (isWindows) {
             try {
-                const { stdout } = await execPromise(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, { timeout: 5000 });
-                isRunning = stdout.toLowerCase().includes(processName.toLowerCase());
+                // Use faster wmic query with specific process name
+                const { stdout } = await execPromise(`wmic process where "name='${processName}'" get ProcessId /format:value`, { timeout: 3000 });
+                isRunning = stdout.includes('ProcessId=') && !stdout.includes('ProcessId=\r\r\n');
             } catch (error) {
-                // Handle common Windows errors that shouldn't be reported
-                if (error.message.includes('Access is denied') || 
-                    error.message.includes('timeout') ||
-                    error.code === 'ETIMEDOUT') {
-                    debug(`Process check failed for ${processName} (access/timeout issue):`, error.message);
-                    isRunning = false;
-                } else {
-                    throw error; // Re-throw unexpected errors
+                // Fallback to tasklist if wmic fails
+                try {
+                    const { stdout } = await execPromise(`tasklist /FI "IMAGENAME eq ${processName}" /NH /FO CSV`, { timeout: 3000 });
+                    isRunning = stdout.toLowerCase().includes(processName.toLowerCase());
+                } catch (fallbackError) {
+                    // Handle common Windows errors that shouldn't be reported
+                    if (fallbackError.message.includes('Access is denied') || 
+                        fallbackError.message.includes('timeout') ||
+                        fallbackError.code === 'ETIMEDOUT') {
+                        debug(`Process check failed for ${processName} (access/timeout issue):`, fallbackError.message);
+                        isRunning = false;
+                    } else {
+                        throw fallbackError;
+                    }
                 }
             }
         } else if (isMacOS) {
@@ -449,6 +468,7 @@ async function isTaskRunning(processName) {
             timestamp: now
         });
         
+        isProcessingBatch = false;
         return isRunning;
     } catch (error) {
         debug(`Error checking if ${processName} is running:`, error);
@@ -482,6 +502,7 @@ async function isTaskRunning(processName) {
             running: false,
             timestamp: now
         });
+        isProcessingBatch = false;
         return false;
     }
 }
@@ -517,20 +538,30 @@ async function startMonitoring() {
         });
 
         async function checkApps() {
-            if (!monitoring) return;
+            if (!monitoring || isUpdating) return;
             
             try {
-                debug('\n=== Enhanced App Check Cycle ===');
-                const checkPromises = [];
+                debug('\n=== Optimized App Check Cycle ===');
                 
-                for (const appGroup of config.appGroups) {
-                    checkPromises.push(processAppGroup(appGroup));
+                // Skip if no app groups configured
+                if (!config.appGroups || config.appGroups.length === 0) {
+                    return;
                 }
                 
-                await Promise.allSettled(checkPromises);
+                // Process groups with a small delay to prevent system overload
+                for (let i = 0; i < config.appGroups.length; i++) {
+                    if (!monitoring) break; // Check if monitoring was stopped
+                    
+                    await processAppGroup(config.appGroups[i]);
+                    
+                    // Add small delay between groups to reduce CPU impact
+                    if (i < config.appGroups.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
                 
             } catch (error) {
-                console.error('Error in enhanced checkApps:', error);
+                console.error('Error in optimized checkApps:', error);
                 Sentry.captureException(error);
             }
         }
@@ -717,7 +748,7 @@ async function ensureAppIsRunning(appPath) {
                     command = `"${appPath}" &`;
                 }
                 
-                exec(command, { timeout: 10000 }, (error, stdout, stderr) => {
+                exec(command, { timeout: 5000, windowsHide: true }, (error, stdout, stderr) => {
                     if (error) {
                         // Check for common error types that shouldn't be reported to Sentry
                         const errorMessage = error.message.toLowerCase();
@@ -794,7 +825,7 @@ async function stopApp(appName) {
                 command = `pkill -f "${processNameWithoutExt}"`;
             }
             
-            exec(command, { timeout: 5000 }, (error, stdout, stderr) => {
+            exec(command, { timeout: 3000, windowsHide: true }, (error, stdout, stderr) => {
                 if (error) {
                     // Handle common errors that shouldn't be reported to Sentry
                     const errorMessage = error.message.toLowerCase();
@@ -1339,18 +1370,38 @@ ipcMain.handle('get-running-processes', async () => {
         let processes = [];
         
         if (isWindows) {
-            const { stdout } = await execPromise('tasklist /FO CSV /NH');
-            processes = stdout.split('\n')
-                .filter(line => line.trim())
-                .map(line => {
-                    const parts = line.split(',');
-                    return {
-                        name: parts[0]?.replace(/"/g, ''),
-                        pid: parts[1]?.replace(/"/g, ''),
-                    };
-                })
-                .filter(proc => proc.name && proc.name.endsWith('.exe'))
-                .sort((a, b) => a.name.localeCompare(b.name));
+            // Use wmic for faster process listing
+            try {
+                const { stdout } = await execPromise('wmic process get Name,ProcessId /format:csv | findstr /v "^$"', { timeout: 5000 });
+                processes = stdout.split('\n')
+                    .filter(line => line.trim() && !line.startsWith('Node'))
+                    .map(line => {
+                        const parts = line.split(',');
+                        if (parts.length >= 3) {
+                            return {
+                                name: parts[1]?.trim(),
+                                pid: parts[2]?.trim(),
+                            };
+                        }
+                        return null;
+                    })
+                    .filter(proc => proc && proc.name && proc.name.endsWith('.exe'))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            } catch (error) {
+                // Fallback to tasklist if wmic fails
+                const { stdout } = await execPromise('tasklist /FO CSV /NH', { timeout: 5000 });
+                processes = stdout.split('\n')
+                    .filter(line => line.trim())
+                    .map(line => {
+                        const parts = line.split(',');
+                        return {
+                            name: parts[0]?.replace(/"/g, ''),
+                            pid: parts[1]?.replace(/"/g, ''),
+                        };
+                    })
+                    .filter(proc => proc.name && proc.name.endsWith('.exe'))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            }
         } else if (isMacOS) {
             // Get running applications
             const { stdout } = await execPromise('ps -eo pid,comm | grep -v "grep"');
@@ -1450,6 +1501,8 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
     console.log('[Pairkiller] Update available:', info);
+    isUpdating = true; // Stop intensive operations during update
+    
     new Notification({
         title: 'Pairkiller Update',
         body: `Version ${info.version} is available and will be downloaded automatically.`,
@@ -1605,6 +1658,15 @@ autoUpdater.on('download-progress', (progress) => {
     const percent = Math.round(progress.percent);
     console.log(`[Pairkiller] Download progress: ${percent}%`);
     
+    // Temporarily pause monitoring to reduce system load during download
+    if (monitoring && percent > 10) {
+        debug('Temporarily pausing monitoring during update download');
+        if (monitoringTimeout) {
+            clearInterval(monitoringTimeout);
+            monitoringTimeout = null;
+        }
+    }
+    
     if (updateWindow && !updateWindow.isDestroyed()) {
         updateWindow.webContents.send('update-progress', percent);
         updateWindow.webContents.send('update-status', `Downloading update: ${percent}%`);
@@ -1633,12 +1695,29 @@ autoUpdater.on('update-downloaded', (info) => {
     }, 10000);
 });
 
-// Update checking
-setInterval(() => {
-    if (process.env.NODE_ENV !== 'development') {
-        autoUpdater.checkForUpdates().catch(console.error);
+// Update checking - reduced frequency to prevent system slowdown
+let updateCheckTimer = null;
+
+function scheduleUpdateCheck() {
+    if (updateCheckTimer) {
+        clearTimeout(updateCheckTimer);
     }
-}, 60 * 60 * 1000); // Check every hour
+    
+    // Check every 4 hours instead of every hour to reduce system load
+    updateCheckTimer = setTimeout(() => {
+        if (process.env.NODE_ENV !== 'development') {
+            autoUpdater.checkForUpdates().catch(error => {
+                debug('Scheduled update check failed:', error.message);
+                // Retry in 30 minutes if failed
+                setTimeout(() => scheduleUpdateCheck(), 30 * 60 * 1000);
+            });
+        }
+        scheduleUpdateCheck(); // Schedule next check
+    }, 4 * 60 * 60 * 1000);
+}
+
+// Start the update checking cycle
+scheduleUpdateCheck();
 
 // Debug utility
 function debug(...args) {
@@ -1767,12 +1846,14 @@ process.on('SIGTERM', async () => {
     app.quit();
 });
 
-// Initial update check
+// Initial update check - delayed to prevent startup slowdown
 setTimeout(() => {
     if (process.env.NODE_ENV !== 'development') {
-        autoUpdater.checkForUpdatesAndNotify().catch(console.error);
+        autoUpdater.checkForUpdatesAndNotify().catch(error => {
+            debug('Initial update check failed:', error.message);
+        });
     }
-}, 10000); // Check after 10 seconds
+}, 30000); // Check after 30 seconds to allow app to fully initialize
 
 function setupMenuBar() {
     if (!isMacOS) return;
@@ -1901,6 +1982,7 @@ ipcMain.on('check-for-updates', () => {
 
 ipcMain.on('install-update', async () => {
     debug('Update installation requested');
+    isUpdating = true;
     
     try {
         // Create config backup before update
@@ -1908,25 +1990,46 @@ ipcMain.on('install-update', async () => {
         
         // Notify user of installation
         if (updateWindow && !updateWindow.isDestroyed()) {
-            updateWindow.webContents.send('update-status', 'Installing update...');
+            updateWindow.webContents.send('update-status', 'Preparing for installation...');
         }
         
-        // Stop monitoring to prevent issues during update
+        // Stop all monitoring and cleanup to prevent system conflicts
         if (monitoring) {
+            debug('Stopping monitoring for update installation');
             await stopMonitoring();
         }
         
-        // Install the update
-        autoUpdater.quitAndInstall(false, true);
+        // Clear all caches and timers
+        processCache.clear();
+        if (updateCheckTimer) {
+            clearTimeout(updateCheckTimer);
+        }
+        
+        // Small delay to ensure cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (updateWindow && !updateWindow.isDestroyed()) {
+            updateWindow.webContents.send('update-status', 'Installing update...');
+        }
+        
+        // Install the update with silent restart
+        autoUpdater.quitAndInstall(true, true);
         
     } catch (error) {
         console.error('Error preparing for update installation:', error);
+        isUpdating = false;
+        
         Sentry.captureException(error, {
             tags: { component: 'update-installation' }
         });
         
         if (updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Error preparing update - please try again');
+        }
+        
+        // Restart monitoring if update failed
+        if (config.monitoring.enabled) {
+            setTimeout(() => startMonitoring(), 2000);
         }
     }
 });
