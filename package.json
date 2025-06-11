@@ -1,7 +1,7 @@
 {
   "name": "pairkiller",
   "productName": "Pairkiller",
-  "version": "4.5.0",
+  "version": "4.5.1",
   "description": "A modern, flexible app monitoring and control system with enhanced UI and performance",
   "main": "main.js",
   "scripts": {
@@ -82,7 +82,9 @@
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "darkModeSupport": true,
-      "minimumSystemVersion": "10.14.0"
+      "minimumSystemVersion": "10.14.0",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "linux": {
       "category": "Utility",
@@ -106,31 +108,33 @@
       "vendor": "Ben Hybert",
       "synopsis": "Modern app monitoring and companion app management tool",
       "description": "Pairkiller is a cross-platform application that monitors running programs and automatically manages companion applications. Perfect for gamers who want to automatically start/stop tools like Blitz, BakkesMod, or other companion apps when specific games are detected."
-    },
-    "dmg": {
-      "title": "${productName} ${version}",
-      "icon": "build/icons/icon.png",
-      "background": null,
-      "backgroundColor": "#ffffff",
-      "contents": [
-        {
-          "x": 410,
-          "y": 150,
-          "type": "link",
-          "path": "/Applications"
+          },
+      "dmg": {
+        "title": "${productName} ${version}",
+        "icon": "build/icons/icon.png",
+        "background": null,
+        "backgroundColor": "#ffffff",
+        "contents": [
+          {
+            "x": 410,
+            "y": 150,
+            "type": "link",
+            "path": "/Applications"
+          },
+          {
+            "x": 130,
+            "y": 150,
+            "type": "file"
+          }
+        ],
+        "window": {
+          "width": 540,
+          "height": 380
         },
-        {
-          "x": 130,
-          "y": 150,
-          "type": "file"
-        }
-      ],
-      "window": {
-        "width": 540,
-        "height": 380
-      }
-    },
-    "nsis": {
+        "format": "UDZO",
+        "internetEnabled": false
+      },
+      "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
