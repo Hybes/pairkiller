@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.6.1](https://github.com/hybes/pairkiller/compare/v4.5.1...v4.6.1) (2025-08-06)
+
 ## [4.0.0](https://github.com/hybes/pairkiller/compare/v3.2.0...v4.0.0) (2024-11-26)
 
 ### ✨ Features

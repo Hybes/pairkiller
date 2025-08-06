@@ -1,7 +1,7 @@
 {
   "name": "pairkiller",
   "productName": "Pairkiller",
-  "version": "4.5.1",
+  "version": "4.6.1",
   "description": "A modern, flexible app monitoring and control system with enhanced UI and performance",
   "main": "main.js",
   "scripts": {
@@ -48,18 +48,25 @@
       {
         "from": "build/icons/",
         "to": "icons/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "ia32"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icons/icon.png",
@@ -73,11 +80,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}",
@@ -92,15 +105,21 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "tar.gz",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}",
@@ -108,39 +127,50 @@
       "vendor": "Ben Hybert",
       "synopsis": "Modern app monitoring and companion app management tool",
       "description": "Pairkiller is a cross-platform application that monitors running programs and automatically manages companion applications. Perfect for gamers who want to automatically start/stop tools like Blitz, BakkesMod, or other companion apps when specific games are detected."
-          },
-      "dmg": {
-        "title": "${productName} ${version}",
-        "icon": "build/icons/icon.png",
-        "background": null,
-        "backgroundColor": "#ffffff",
-        "contents": [
-          {
-            "x": 410,
-            "y": 150,
-            "type": "link",
-            "path": "/Applications"
-          },
-          {
-            "x": 130,
-            "y": 150,
-            "type": "file"
-          }
-        ],
-        "window": {
-          "width": 540,
-          "height": 380
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "build/icons/icon.png",
+      "background": null,
+      "backgroundColor": "#ffffff",
+      "contents": [
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
         },
-        "format": "UDZO",
-        "internetEnabled": false
+        {
+          "x": 130,
+          "y": 150,
+          "type": "file"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
       },
-      "nsis": {
+      "format": "UDZO",
+      "internetEnabled": false
+    },
+    "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Pairkiller",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "Pairkiller",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "runAfterFinish": true,
+      "packElevateHelper": false,
+      "displayLanguageSelector": false,
+      "menuCategory": false,
+      "installerLanguages": [
+        "en_US"
+      ],
       "include": "build/installer.nsh"
     },
     "snap": {
@@ -185,7 +215,8 @@
     "@sentry/electron": "^4.8.0",
     "dotenv": "^16.4.5",
     "electron-context-menu": "^4.0.4",
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.3.9",
+    "winreg": "^1.2.5"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
