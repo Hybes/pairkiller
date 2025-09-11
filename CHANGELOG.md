@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.6.2](https://github.com/hybes/pairkiller/compare/v4.6.1...v4.6.2) (2025-09-11)
+
+
+### Features
+
+* comprehensive Windows installer system with cleanup and validation ([4d2cadc](https://github.com/hybes/pairkiller/commit/4d2cadc0d4536fe5c905c414a3bac25a683d0557))
+
+
+### Bug Fixes
+
+* remove invalid NSIS configuration properties and fix icon paths ([729d37d](https://github.com/hybes/pairkiller/commit/729d37de0a729931a573c6217ab3e780eb64c299))
+* remove NSIS icon configuration to fix build ([fe6d4f9](https://github.com/hybes/pairkiller/commit/fe6d4f9383d026d78fb951733431f494247e352e))
+* update build scripts for Windows compatibility and use PNG icons ([9c338a7](https://github.com/hybes/pairkiller/commit/9c338a778720686d39d63cdd0e2b2c2def75b3c8))
+
 ### [4.6.1](https://github.com/hybes/pairkiller/compare/v4.5.1...v4.6.1) (2025-08-06)
 
 ## [4.0.0](https://github.com/hybes/pairkiller/compare/v3.2.0...v4.0.0) (2024-11-26)
