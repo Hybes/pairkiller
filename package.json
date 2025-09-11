@@ -14,9 +14,9 @@
     "build:linux": "npm run build:css && npx electron-builder --linux",
     "watch:css": "npx tailwindcss -i ./styles.css -o ./output.css --watch",
     "build:css": "npx tailwindcss -i ./styles.css -o ./output.css --minify",
-    "build:icons": "npm run build:icons:setup && npm run build:icons:create",
-    "build:icons:setup": "mkdir -p build/icons && cp icon.png build/icons/icon.png",
-    "build:icons:create": "magick icon.png build/icons/icon.icns && magick icon.png -resize 256x256 build/icons/icon.ico",
+    "build:icons": "npm run build:icons:setup",
+    "build:icons:setup": "if not exist build\\icons mkdir build\\icons && copy icon.png build\\icons\\icon.png",
+    "build:icons:create": "echo ImageMagick not available - using PNG icon for all formats",
     "bump": "standard-version",
     "dist": "npm run build:css && npx electron-builder --publish=never",
     "pack": "npm run build:css && npx electron-builder --dir",
@@ -69,7 +69,7 @@
           ]
         }
       ],
-      "icon": "build/icons/icon.png",
+      "icon": "icon.png",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "requestedExecutionLevel": "asInvoker",
       "publisherName": "Ben Hybert"
