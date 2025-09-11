@@ -175,14 +175,13 @@
       "warningsAsErrors": false,
       "unicode": true,
       "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "installerHeaderIcon": "build/icons/icon.ico",
-      "installerIcon": "build/icons/icon.ico",
-      "uninstallerIcon": "build/icons/icon.ico",
+      "installerHeaderIcon": "icon.png",
+      "installerIcon": "icon.png",
+      "uninstallerIcon": "icon.png",
       "installerSidebar": null,
       "uninstallerSidebar": null,
       "multiLanguageInstaller": false,
-      "removeDefaultUninstallWelcomePage": false,
-      "removePackageScripts": false
+      "removeDefaultUninstallWelcomePage": false
     },
     "snap": {
       "summary": "App monitoring and control system"
