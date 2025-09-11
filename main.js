@@ -1486,6 +1486,59 @@ ipcMain.handle('get-background-mode', () => {
     return { backgroundMode: isMacOS ? backgroundMode : false };
 });
 
+// Auto-start management handlers
+ipcMain.handle('get-auto-start', () => {
+    const settings = app.getLoginItemSettings();
+    return settings.openAtLogin;
+});
+
+ipcMain.handle('set-auto-start', async (event, enabled) => {
+    try {
+        if (isWindows) {
+            // On Windows, use registry for more reliable auto-start
+            const Registry = require('winreg');
+            const regKey = new Registry({
+                hive: Registry.HKCU,
+                key: '\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+            });
+            
+            if (enabled) {
+                await new Promise((resolve, reject) => {
+                    regKey.set('Pairkiller', Registry.REG_SZ, `"${process.execPath}" --startup`, (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                });
+            } else {
+                await new Promise((resolve, reject) => {
+                    regKey.remove('Pairkiller', (err) => {
+                        if (err && err.code !== 'ENOENT') reject(err);
+                        else resolve();
+                    });
+                });
+            }
+        } else {
+            // For macOS and Linux, use Electron's built-in method
+            app.setLoginItemSettings({
+                openAtLogin: enabled,
+                openAsHidden: true,
+                args: ['--startup']
+            });
+        }
+        
+        // Save the preference to config
+        if (!config.ui) config.ui = {};
+        config.ui.autoStart = enabled;
+        await saveConfig();
+        
+        return { success: true, enabled };
+    } catch (error) {
+        console.error('Error setting auto-start:', error);
+        Sentry.captureException(error);
+        return { success: false, error: error.message };
+    }
+});
+
 // Auto-updater configuration
 autoUpdater.setFeedURL({
     provider: 'github',
@@ -1730,6 +1783,17 @@ function debug(...args) {
 async function initialize() {
     try {
         debug('Starting application initialization');
+        
+        // Check if app was started with --startup flag (auto-start on boot)
+        const isStartupLaunch = process.argv.includes('--startup');
+        if (isStartupLaunch) {
+            debug('App started via auto-start on boot');
+            // Start minimized to tray when auto-started
+            if (!isMacOS) {
+                // On Windows/Linux, prevent window from showing
+                global.startMinimized = true;
+            }
+        }
         
         // Load configuration first
         await loadConfig();

@@ -158,11 +158,11 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": false,
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Pairkiller",
       "deleteAppDataOnUninstall": false,
-      "uninstallDisplayName": "Pairkiller",
+      "uninstallDisplayName": "Pairkiller ${version}",
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "runAfterFinish": true,
       "packElevateHelper": false,
@@ -171,7 +171,18 @@
       "installerLanguages": [
         "en_US"
       ],
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "warningsAsErrors": false,
+      "unicode": true,
+      "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "installerHeaderIcon": "build/icons/icon.ico",
+      "installerIcon": "build/icons/icon.ico",
+      "uninstallerIcon": "build/icons/icon.ico",
+      "installerSidebar": null,
+      "uninstallerSidebar": null,
+      "multiLanguageInstaller": false,
+      "removeDefaultUninstallWelcomePage": false,
+      "removePackageScripts": false
     },
     "snap": {
       "summary": "App monitoring and control system"

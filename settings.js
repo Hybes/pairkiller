@@ -24,7 +24,8 @@ async function initializeApp() {
         
         await Promise.all([
             loadPresets(),
-            loadAppGroups()
+            loadAppGroups(),
+            loadSystemSettings()
         ]);
         
         setupEventListeners();
@@ -42,6 +43,7 @@ async function initializeApp() {
 function setupEventListeners() {
     const addGroupButton = document.getElementById('addGroupButton');
     const saveButton = document.getElementById('saveSettingsButton');
+    const autoStartToggle = document.getElementById('autoStartToggle');
 
     addGroupButton.addEventListener('click', () => {
         createGroupElement();
@@ -49,6 +51,27 @@ function setupEventListeners() {
     });
 
     saveButton.addEventListener('click', saveSettings);
+    
+    if (autoStartToggle) {
+        autoStartToggle.addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+            showNotification('Updating auto-start setting...', 'info');
+            
+            try {
+                const result = await ipcRenderer.invoke('set-auto-start', enabled);
+                if (result.success) {
+                    showNotification(`Auto-start ${enabled ? 'enabled' : 'disabled'}`, 'success');
+                } else {
+                    showNotification(`Failed to update auto-start: ${result.error}`, 'error');
+                    e.target.checked = !enabled;
+                }
+            } catch (error) {
+                console.error('Error updating auto-start:', error);
+                showNotification('Failed to update auto-start setting', 'error');
+                e.target.checked = !enabled;
+            }
+        });
+    }
     
     window.addEventListener('beforeunload', (e) => {
         if (unsavedChanges) {
@@ -121,6 +144,18 @@ function loadAppGroups() {
             createGroupElement(group);
         }, index * 100);
     });
+}
+
+async function loadSystemSettings() {
+    try {
+        const autoStartToggle = document.getElementById('autoStartToggle');
+        if (autoStartToggle) {
+            const isEnabled = await ipcRenderer.invoke('get-auto-start');
+            autoStartToggle.checked = isEnabled;
+        }
+    } catch (error) {
+        console.error('Failed to load system settings:', error);
+    }
 }
 
 function createGroupElement(groupData = null) {

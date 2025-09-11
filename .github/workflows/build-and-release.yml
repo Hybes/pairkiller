@@ -2,390 +2,243 @@ name: Build and Release
 
 on:
   push:
-    branches: [main]
+    branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [main]
+    branches: [ main, master ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  packages: write
-  actions: read
-
 jobs:
+  # Check if version changed (for automatic releases)
   check-version:
     runs-on: ubuntu-latest
     outputs:
       version-changed: ${{ steps.check.outputs.changed }}
-      version: ${{ steps.get-version.outputs.version }}
+      version: ${{ steps.check.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-
-      - name: Check if package.json version changed
+      
+      - name: Check if version changed
         id: check
         run: |
-          if git diff --name-only HEAD~1 HEAD | grep -q "package.json"; then
-            if git diff HEAD~1 HEAD package.json | grep -q '"version"'; then
+          if git diff HEAD~1 HEAD --name-only | grep -q "package.json"; then
+            CURRENT_VERSION=$(node -p "require('./package.json').version")
+            PREVIOUS_VERSION=$(git show HEAD~1:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8')).version")
+            if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
               echo "changed=true" >> $GITHUB_OUTPUT
-              echo "Package.json version changed, will build and release"
+              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+              echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
             else
               echo "changed=false" >> $GITHUB_OUTPUT
-              echo "Package.json changed but version didn't change"
             fi
           else
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "Package.json didn't change"
           fi
-
-      - name: Get version
-        id: get-version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Current version: $VERSION"
 
   build:
     needs: check-version
-    if: needs.check-version.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check-version.outputs.version-changed == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    
     strategy:
-      fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            platform: win
-            target: "--win"
-            artifact_name: "windows"
-          - os: macos-latest
-            platform: mac
-            target: "--mac"
-            artifact_name: "macos"
-          - os: ubuntu-latest
-            platform: linux
-            target: "--linux"
-            artifact_name: "linux"
-
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        
     runs-on: ${{ matrix.os }}
     
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-
+        
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '18'
           cache: 'npm'
-
+          
       - name: Install dependencies
         run: npm ci
-
-      - name: Run migration tests
-        run: npm run test:migration
-
-      - name: Prepare build icons
+        
+      - name: Install ImageMagick (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+        
+      - name: Install ImageMagick (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install imagemagick
+        
+      - name: Install ImageMagick (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
-          mkdir -p build/icons
-          cp icon.png build/icons/icon.png
-        shell: bash
-
+          choco install imagemagick -y
+          refreshenv
+        
+      - name: Build icons
+        run: npm run build:icons
+        
       - name: Build CSS
         run: npm run build:css
-
-      - name: Debug - List files before build (Windows)
-        if: matrix.platform == 'win'
-        run: |
-          echo "=== Current directory contents ==="
-          dir
-          echo "=== Build icons directory ==="
-          dir build\icons\
-          echo "=== Node modules electron-builder ==="
-          dir node_modules\.bin\ | findstr electron
-        shell: cmd
-
-      - name: Debug - List files before build (Unix)
-        if: matrix.platform != 'win'
-        run: |
-          echo "=== Current directory contents ==="
-          ls -la
-          echo "=== Build icons directory ==="
-          ls -la build/icons/
-          echo "=== Node modules electron-builder ==="
-          ls -la node_modules/.bin/ | grep electron
-
-      - name: Build Electron app (Windows)
-        if: matrix.platform == 'win'
-        run: |
-          npm run build:css
-          npx electron-builder --win --publish=never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Electron app (non-Windows)
-        if: matrix.platform != 'win'
-        run: npm run build:css && npx electron-builder ${{ matrix.target }} --publish=never
-        continue-on-error: ${{ matrix.platform == 'mac' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Fallback macOS ZIP build (if DMG failed)
-        if: matrix.platform == 'mac' && failure()
-        run: |
-          echo "DMG build failed, attempting ZIP-only build as fallback..."
-          # Temporarily modify package.json to only build ZIP
-          node -e "
-            const pkg = require('./package.json');
-            pkg.build.mac.target = [{ target: 'zip', arch: ['x64', 'arm64'] }];
-            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2));
-          "
-          npx electron-builder --mac --publish=never
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate build compatibility (Linux only)
-        if: matrix.platform == 'linux'
-        run: |
-          echo "=== Testing config migration compatibility ==="
-          
-          # Create test configs from previous versions
-          mkdir -p test-configs
-          
-          # Test v1.x config (old format)
-          cat > test-configs/v1-config.json << 'EOF'
-          {
-            "apps": [
-              {
-                "name": "Test App",
-                "enabled": true,
-                "monitoredApps": [{"name": "test.exe"}],
-                "controlledApps": [{"name": "control.exe", "path": "/test", "action": "sync"}]
-              }
-            ],
-            "anonymousUsage": true
-          }
-          EOF
-          
-          # Test v2.x config
-          cat > test-configs/v2-config.json << 'EOF'
-          {
-            "appGroups": [
-              {
-                "name": "Test Group",
-                "enabled": true,
-                "monitoredApps": [{"name": "test.exe"}],
-                "controlledApps": [{"name": "control.exe", "path": "/test", "action": "sync"}]
-              }
-            ],
-            "anonymousUsage": true,
-            "monitoring": {"interval": 2500, "enabled": true}
-          }
-          EOF
-          
-          # Test v3.x config
-          cat > test-configs/v3-config.json << 'EOF'
-          {
-            "appGroups": [
-              {
-                "name": "Test Group v3",
-                "enabled": true,
-                "condition": "any",
-                "monitoredApps": [{"name": "test.exe"}],
-                "controlledApps": [{"name": "control.exe", "path": "/test", "action": "sync"}]
-              }
-            ],
-            "anonymousUsage": true,
-            "monitoring": {"interval": 2500, "enabled": true},
-            "ui": {"theme": "dark", "animations": true},
-            "configVersion": "3.0.0"
-          }
-          EOF
-          
-          echo "Migration test configs created successfully"
-
-      - name: List build artifacts (Windows)
-        if: matrix.platform == 'win'
-        run: |
-          echo "=== Build artifacts ==="
-          dir dist\
-        shell: cmd
-
-      - name: List build artifacts (Unix)
-        if: matrix.platform != 'win'
-        run: |
-          echo "=== Build artifacts ==="
-          ls -la dist/
-
-      - name: Upload artifacts
+        
+      - name: Build for Windows
+        if: matrix.os == 'windows-latest'
+        run: npm run build:win
+        
+      - name: Build for macOS
+        if: matrix.os == 'macos-latest'
+        run: npm run build:mac
+        
+      - name: Build for Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run build:linux
+        
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: pairkiller-${{ matrix.artifact_name }}-v${{ needs.check-version.outputs.version }}
+          name: windows-installers
           path: |
             dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+          retention-days: 30
+          
+      - name: Upload macOS artifacts
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installers
+          path: |
             dist/*.dmg
             dist/*.zip
+            dist/*.dmg.blockmap
+            dist/*.zip.blockmap
+            dist/latest-mac.yml
+          retention-days: 30
+          
+      - name: Upload Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installers
+          path: |
             dist/*.AppImage
             dist/*.deb
-            dist/*.snap
             dist/*.tar.gz
-            dist/latest*.yml
-            dist/*.blockmap
-          retention-days: 90
-          if-no-files-found: warn
+            dist/*.AppImage.blockmap
+            dist/latest-linux.yml
+          retention-days: 30
 
   release:
     needs: [check-version, build]
-    if: needs.check-version.outputs.version-changed == 'true' && github.ref == 'refs/heads/main' && always()
+    if: needs.check-version.outputs.version-changed == 'true' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-
+        
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Prepare release files
-        run: |
-          mkdir -p release-files
           
-          echo "=== Downloaded artifacts structure ==="
-          find artifacts -type f -name "*" | head -20
-          
-          # Copy all distribution files
-          find artifacts -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.snap" -o -name "*.tar.gz" -o -name "latest*.yml" -o -name "*.blockmap" \) -exec cp {} release-files/ \; 2>/dev/null || true
-          
-          echo "=== Release files ==="
-          ls -la release-files/
-          
-          # Count and report what we have
-          WINDOWS_COUNT=$(find release-files -name "*.exe" | wc -l)
-          MACOS_COUNT=$(find release-files -name "*.dmg" -o -name "*mac*.zip" | wc -l)
-          LINUX_COUNT=$(find release-files -name "*.AppImage" -o -name "*.deb" -o -name "*.snap" -o -name "*.tar.gz" | wc -l)
-          
-          echo "Build summary:"
-          echo "  Windows builds: $WINDOWS_COUNT"
-          echo "  macOS builds: $MACOS_COUNT"
-          echo "  Linux builds: $LINUX_COUNT"
-          
-          # Check if we have any files
-          if [ "$(ls -A release-files/)" ]; then
-            echo "Found $(ls release-files/ | wc -l) total release files"
-            # Create checksums for all files
-            cd release-files
-            sha256sum * > SHA256SUMS.txt
-            cd ..
-            
-            # Create a build report
-            echo "# Build Report for v${{ needs.check-version.outputs.version }}" > release-files/BUILD_REPORT.md
-            echo "" >> release-files/BUILD_REPORT.md
-            echo "- ✅ Windows: $WINDOWS_COUNT builds" >> release-files/BUILD_REPORT.md
-            if [ "$MACOS_COUNT" -gt 0 ]; then
-              echo "- ✅ macOS: $MACOS_COUNT builds" >> release-files/BUILD_REPORT.md
-            else
-              echo "- ⚠️  macOS: Build failed (DMG creation issue)" >> release-files/BUILD_REPORT.md
-            fi
-            echo "- ✅ Linux: $LINUX_COUNT builds" >> release-files/BUILD_REPORT.md
-          else
-            echo "WARNING: No release files found!"
-            echo "=== Full artifacts directory structure ==="
-            find artifacts -type f -name "*" | sort
-            
-            # Still create a report even if no files
-            echo "# Build Report for v${{ needs.check-version.outputs.version }}" > release-files/BUILD_REPORT.md
-            echo "" >> release-files/BUILD_REPORT.md
-            echo "❌ All builds failed - check workflow logs" >> release-files/BUILD_REPORT.md
-            
-            # Don't exit with error - let the release continue with just the report
-          fi
-
-      - name: Read changelog
-        id: changelog
-        run: |
-          if [ -f CHANGELOG.md ]; then
-            # Get content between first two version headings
-            CHANGELOG=$(awk '/^## \[/{if(++c==2) exit} c==1' CHANGELOG.md | head -n -1 | tail -n +2)
-            if [ -z "$CHANGELOG" ]; then
-              CHANGELOG="Release v${{ needs.check-version.outputs.version }}"
-            fi
-            echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGELOG" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "changelog=Release v${{ needs.check-version.outputs.version }}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+        
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ needs.check-version.outputs.version }}
-          name: Pairkiller v${{ needs.check-version.outputs.version }}
+          release_name: Pairkiller v${{ needs.check-version.outputs.version }}
           body: |
             ## Pairkiller v${{ needs.check-version.outputs.version }}
             
-            ### 🎮 Cross-Platform App Monitoring & Control
+            ### Downloads
             
-            Pairkiller automatically manages your companion applications based on what games you're playing. Now with seamless update system and full backward compatibility!
+            **Windows:**
+            - `Pairkiller-Setup-${{ needs.check-version.outputs.version }}.exe` - Windows Installer (Recommended)
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.exe` - Portable Version
             
-            ### 📥 Downloads
+            **macOS:**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.dmg` - Intel Macs
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-arm64.dmg` - Apple Silicon
             
-            Choose the appropriate download for your platform:
-            
-            **🪟 Windows:**
-            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.exe` - Windows installer (64-bit) **← Recommended**
-            - `Pairkiller-${{ needs.check-version.outputs.version }}-ia32.exe` - Windows installer (32-bit)
-            
-            **🍎 macOS:**
-            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.dmg` - macOS Intel
-            - `Pairkiller-${{ needs.check-version.outputs.version }}-arm64.dmg` - macOS Apple Silicon (M1/M2/M3)
-            
-            **🐧 Linux:**
-            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.AppImage` - Universal Linux **← Recommended**
+            **Linux:**
+            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.AppImage` - Universal Linux
             - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.deb` - Debian/Ubuntu
-            - `Pairkiller-${{ needs.check-version.outputs.version }}-x64.snap` - Snap package
             
-            ### 🔐 Security
+            ### Installation Notes
             
-            - `SHA256SUMS.txt` - File checksums for verification
+            - **Windows**: Run the installer as administrator if you encounter issues
+            - **macOS**: You may need to allow the app in System Preferences > Security & Privacy
+            - **Linux**: Make the AppImage executable: `chmod +x Pairkiller-*.AppImage`
             
-            ### 📋 Installation Notes
+            ### Auto-Updates
             
-            **Windows:** Run the installer or use the portable version
-            **macOS:** Mount the DMG and drag to Applications folder
-            **Linux:** Make AppImage executable (`chmod +x`) or install DEB/Snap package
-            
-            ### 🔄 Updating from Previous Versions
-            
-            This version includes a comprehensive migration system that automatically updates your configuration from any previous version (v1.0.0+). Your settings, app groups, and preferences will be preserved during the update.
-            
-            ### 📝 What's New
-            
-            ${{ steps.changelog.outputs.changelog }}
-            
-            ### 💻 System Requirements
-            
-            - **Windows:** Windows 10+ 
-            - **macOS:** macOS 10.14+ (Mojave)
-            - **Linux:** Ubuntu 18.04+ or equivalent
-            - Administrator/sudo access may be required for app control features
-            
-            ### 🆘 Need Help?
-            
-            - 📖 [Documentation](https://github.com/hybes/pairkiller#readme)
-            - 🐛 [Report Issues](https://github.com/hybes/pairkiller/issues)
-            - 💬 [Discussions](https://github.com/hybes/pairkiller/discussions)
-            
-            ---
-            
-            **Full Changelog:** [v${{ needs.check-version.outputs.version }}](https://github.com/hybes/pairkiller/compare/v3.2.0...v${{ needs.check-version.outputs.version }})
-          files: release-files/*
+            This version includes auto-update functionality. The app will check for updates automatically.
           draft: false
           prerelease: false
-          generate_release_notes: false
+          
+      - name: Upload Windows Installer
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/windows-installers/Pairkiller-Setup-${{ needs.check-version.outputs.version }}.exe
+          asset_name: Pairkiller-Setup-${{ needs.check-version.outputs.version }}.exe
+          asset_content_type: application/octet-stream
+          
+      - name: Upload Windows Portable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/windows-installers/Pairkiller-${{ needs.check-version.outputs.version }}-x64.exe
+          asset_name: Pairkiller-${{ needs.check-version.outputs.version }}-x64.exe
+          asset_content_type: application/octet-stream
+          
+      - name: Upload macOS DMG (Intel)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/macos-installers/Pairkiller-${{ needs.check-version.outputs.version }}-x64.dmg
+          asset_name: Pairkiller-${{ needs.check-version.outputs.version }}-x64.dmg
+          asset_content_type: application/octet-stream
+          
+      - name: Upload macOS DMG (Apple Silicon)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/macos-installers/Pairkiller-${{ needs.check-version.outputs.version }}-arm64.dmg
+          asset_name: Pairkiller-${{ needs.check-version.outputs.version }}-arm64.dmg
+          asset_content_type: application/octet-stream
+          
+      - name: Upload Linux AppImage
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/linux-installers/Pairkiller-${{ needs.check-version.outputs.version }}-x64.AppImage
+          asset_name: Pairkiller-${{ needs.check-version.outputs.version }}-x64.AppImage
+          asset_content_type: application/octet-stream
+          
+      - name: Upload Linux DEB
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/linux-installers/Pairkiller-${{ needs.check-version.outputs.version }}-x64.deb
+          asset_name: Pairkiller-${{ needs.check-version.outputs.version }}-x64.deb
+          asset_content_type: application/octet-stream
