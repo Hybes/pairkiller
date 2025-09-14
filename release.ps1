@@ -1,147 +1,83 @@
-# Pairkiller Release Script
+# PowerShell script to create a new release
 param(
-    [string]$Type = "patch",  # patch, minor, major
-    [switch]$DryRun = $false,
-    [switch]$Local = $false,
-    [switch]$SkipTests = $false
+    [Parameter(Mandatory=$true)]
+    [string]$Version,
+    [string]$Message = "Release version $Version"
 )
 
 Write-Host "=== Pairkiller Release Script ===" -ForegroundColor Green
+Write-Host "Creating release for version: $Version" -ForegroundColor Cyan
 
-# Validate git status
-Write-Host "`nChecking git status..." -ForegroundColor Yellow
-$gitStatus = git status --porcelain
-if ($gitStatus -and -not $DryRun) {
-    Write-Host "✗ Working directory is not clean. Please commit or stash changes." -ForegroundColor Red
-    Write-Host "Uncommitted changes:" -ForegroundColor Yellow
-    git status --short
+# Validate version format
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    Write-Host "✗ Invalid version format. Use semantic versioning (e.g., 4.6.3)" -ForegroundColor Red
     exit 1
 }
-Write-Host "✓ Working directory is clean" -ForegroundColor Green
 
-# Check current version
-$currentVersion = node -p "require('./package.json').version"
-Write-Host "Current version: $currentVersion" -ForegroundColor Cyan
-
-# Calculate new version
-$versionParts = $currentVersion.Split('.')
-$major = [int]$versionParts[0]
-$minor = [int]$versionParts[1] 
-$patch = [int]$versionParts[2]
-
-switch ($Type) {
-    "major" { 
-        $major++; $minor = 0; $patch = 0 
-    }
-    "minor" { 
-        $minor++; $patch = 0 
-    }
-    "patch" { 
-        $patch++ 
-    }
-    default {
-        Write-Host "✗ Invalid version type. Use: patch, minor, or major" -ForegroundColor Red
-        exit 1
-    }
+# Check if we're in a git repository
+if (-not (Test-Path ".git")) {
+    Write-Host "✗ Not in a git repository" -ForegroundColor Red
+    exit 1
 }
 
-$newVersion = "$major.$minor.$patch"
-Write-Host "New version will be: $newVersion" -ForegroundColor Green
-
-if ($DryRun) {
-    Write-Host "`n🔍 DRY RUN MODE - No changes will be made" -ForegroundColor Yellow
-    Write-Host "Would update version from $currentVersion to $newVersion" -ForegroundColor Cyan
-    exit 0
+# Check for uncommitted changes
+$status = git status --porcelain
+if ($status) {
+    Write-Host "✗ You have uncommitted changes. Please commit or stash them first." -ForegroundColor Red
+    Write-Host "Uncommitted files:" -ForegroundColor Yellow
+    $status | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+    exit 1
 }
 
-# Confirm release
-if (-not $Local) {
-    Write-Host "`n⚠️  This will create a GitHub release with version $newVersion" -ForegroundColor Yellow
-    $confirm = Read-Host "Continue? (y/N)"
-    if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-        Write-Host "Release cancelled" -ForegroundColor Gray
-        exit 0
-    }
+# Update package.json version
+Write-Host "`nUpdating package.json version..." -ForegroundColor Yellow
+$packageJson = Get-Content "package.json" -Raw | ConvertFrom-Json
+$oldVersion = $packageJson.version
+$packageJson.version = $Version
+$packageJson | ConvertTo-Json -Depth 10 | Set-Content "package.json"
+
+Write-Host "✓ Version updated: $oldVersion → $Version" -ForegroundColor Green
+
+# Commit the version change
+Write-Host "`nCommitting version change..." -ForegroundColor Yellow
+git add package.json
+git commit -m "Bump version to $Version"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to commit version change" -ForegroundColor Red
+    exit 1
 }
 
-# Run tests if not skipped
-if (-not $SkipTests) {
-    Write-Host "`nRunning tests..." -ForegroundColor Yellow
-    
-    # Build and test installer
-    Write-Host "Building and testing installer..." -ForegroundColor Gray
-    & ".\build-installer.ps1" -Clean
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "✗ Build failed" -ForegroundColor Red
-        exit 1
-    }
-    
-    # Quick validation
-    if (Test-Path "dist\Pairkiller-Setup-$currentVersion.exe") {
-        Write-Host "✓ Installer built successfully" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Installer not found" -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host "⚠️  Skipping tests" -ForegroundColor Yellow
+# Create and push tag
+Write-Host "`nCreating git tag..." -ForegroundColor Yellow
+git tag -a "v$Version" -m "$Message"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to create tag" -ForegroundColor Red
+    exit 1
 }
 
-if ($Local) {
-    Write-Host "`nBuilding local release..." -ForegroundColor Yellow
-    
-    # Update version in package.json
-    $packageJson = Get-Content "package.json" | ConvertFrom-Json
-    $packageJson.version = $newVersion
-    $packageJson | ConvertTo-Json -Depth 10 | Set-Content "package.json"
-    
-    # Build release
-    npm run release
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "✗ Release build failed" -ForegroundColor Red
-        exit 1
-    }
-    
-    Write-Host "✓ Local release built successfully!" -ForegroundColor Green
-    Write-Host "Version updated to: $newVersion" -ForegroundColor Cyan
-    Write-Host "Built files are in the dist/ directory" -ForegroundColor Cyan
-    
-} else {
-    Write-Host "`nCreating GitHub release..." -ForegroundColor Yellow
-    
-    # Use standard-version for proper changelog and tagging
-    Write-Host "Running standard-version..." -ForegroundColor Gray
-    npx standard-version --release-as $Type
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "✗ standard-version failed" -ForegroundColor Red
-        exit 1
-    }
-    
-    # Push changes and tags
-    Write-Host "Pushing to GitHub..." -ForegroundColor Gray
-    git push --follow-tags origin main
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "✗ Git push failed" -ForegroundColor Red
-        exit 1
-    }
-    
-    Write-Host "✓ GitHub release initiated!" -ForegroundColor Green
-    Write-Host "Version: $newVersion" -ForegroundColor Cyan
-    Write-Host "GitHub Actions will build and create the release automatically." -ForegroundColor Cyan
-    Write-Host "Check: https://github.com/hybes/pairkiller/actions" -ForegroundColor Blue
+Write-Host "✓ Tag v$Version created" -ForegroundColor Green
+
+# Push changes and tag
+Write-Host "`nPushing to GitHub..." -ForegroundColor Yellow
+git push origin main
+git push origin "v$Version"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to push to GitHub" -ForegroundColor Red
+    exit 1
 }
 
-Write-Host "`n=== Release Complete ===" -ForegroundColor Green
-
-# Show next steps
-if ($Local) {
-    Write-Host "`nNext steps:" -ForegroundColor Yellow
-    Write-Host "  • Test the installer: .\validate-installer.ps1" -ForegroundColor White
-    Write-Host "  • Commit version changes: git add . && git commit -m 'chore: release v$newVersion'" -ForegroundColor White
-    Write-Host "  • Push to GitHub: git push" -ForegroundColor White
-} else {
-    Write-Host "`nNext steps:" -ForegroundColor Yellow
-    Write-Host "  • Monitor GitHub Actions: https://github.com/hybes/pairkiller/actions" -ForegroundColor White
-    Write-Host "  • Check release page: https://github.com/hybes/pairkiller/releases" -ForegroundColor White
-    Write-Host "  • Test downloaded installer when ready" -ForegroundColor White
-}
+Write-Host "`n=== Release Process Started ===" -ForegroundColor Green
+Write-Host "✓ Version bumped to $Version" -ForegroundColor Green
+Write-Host "✓ Changes committed and pushed" -ForegroundColor Green
+Write-Host "✓ Tag v$Version created and pushed" -ForegroundColor Green
+Write-Host "`nGitHub Actions will now:" -ForegroundColor Cyan
+Write-Host "  1. Build the application" -ForegroundColor Gray
+Write-Host "  2. Create installers for Windows" -ForegroundColor Gray
+Write-Host "  3. Create a GitHub release" -ForegroundColor Gray
+Write-Host "  4. Upload installers to the release" -ForegroundColor Gray
+Write-Host "  5. Update latest.yml for auto-updater" -ForegroundColor Gray
+Write-Host "`nCheck the Actions tab on GitHub for progress: https://github.com/hybes/pairkiller/actions" -ForegroundColor Cyan
+Write-Host "`n🎉 Release process complete!" -ForegroundColor Green
