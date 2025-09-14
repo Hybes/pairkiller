@@ -1,7 +1,7 @@
 {
   "name": "pairkiller",
   "productName": "Pairkiller",
-  "version": "4.6.3",
+  "version": "5.0.0",
   "description": "A modern, flexible app monitoring and control system with enhanced UI and performance",
   "main": "main.js",
   "scripts": {
