@@ -3,6 +3,8 @@ name: Build and Test
 on:
   push:
     branches: [ main, develop ]
+    # Don't run on tags to avoid conflicts with release workflow
+    tags-ignore: [ '**' ]
   pull_request:
     branches: [ main ]
 

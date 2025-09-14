@@ -7,18 +7,21 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 4.6.3)'
+        description: 'Version to release (e.g., 5.0.1)'
         required: true
-        default: '4.6.3'
+        default: '5.0.1'
 
 permissions:
   contents: write
   actions: read
-  packages: write
 
 jobs:
   release:
     runs-on: windows-latest
+    # Ensure only one release workflow runs at a time
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     
     steps:
     - name: Checkout code

@@ -1011,6 +1011,7 @@ function updateTrayMenu() {
     menuTemplate.push({ 
         label: '🔄 Check for Updates',
         click: () => {
+            isManualUpdateCheck = true;
             autoUpdater.checkForUpdatesAndNotify();
         }
     });
@@ -1546,27 +1547,43 @@ autoUpdater.setFeedURL({
     repo: 'pairkiller'
 });
 
+// Track if update check was manual (from user) or automatic (background)
+let isManualUpdateCheck = false;
+
 // Enhanced auto-updater events
 autoUpdater.on('checking-for-update', () => {
     console.log('[Pairkiller] Checking for updates...');
     debug('Checking for updates');
+    
+    // Only show status if it's a manual check
+    if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
+        updateWindow.webContents.send('update-status', 'Checking for updates...');
+    }
 });
 
 autoUpdater.on('update-available', (info) => {
     console.log('[Pairkiller] Update available:', info);
     isUpdating = true; // Stop intensive operations during update
     
+    // Always show notification and window when update is available
     new Notification({
-        title: 'Pairkiller Update',
-        body: `Version ${info.version} is available and will be downloaded automatically.`,
+        title: 'Pairkiller Update Available',
+        body: `Version ${info.version} is available. Click to download and install.`,
         silent: false
     }).show();
+    
+    // Always open update window when update is found
     openUpdateWindow();
+    
+    // Reset manual check flag
+    isManualUpdateCheck = false;
 });
 
 autoUpdater.on('update-not-available', () => {
     console.log('[Pairkiller] No updates available');
-    if (updateWindow && !updateWindow.isDestroyed()) {
+    
+    // Only show "no updates" message if it was a manual check
+    if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
         updateWindow.webContents.send('update-status', 'You have the latest version.');
         setTimeout(() => {
             if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1574,6 +1591,9 @@ autoUpdater.on('update-not-available', () => {
             }
         }, 2000);
     }
+    
+    // Reset manual check flag
+    isManualUpdateCheck = false;
 });
 
 autoUpdater.on('error', (err) => {
@@ -1583,7 +1603,8 @@ autoUpdater.on('error', (err) => {
     if (err.message && err.message.includes('404')) {
         console.log('[Pairkiller] Auto-updater: Release files not found (404). This is normal for new releases or development builds.');
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'No updates available at this time');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1594,7 +1615,8 @@ autoUpdater.on('error', (err) => {
     } else if (err.message && err.message.includes('ENOTFOUND')) {
         console.log('[Pairkiller] Auto-updater: Network error - unable to reach update server.');
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Unable to check for updates - please check your internet connection');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1605,7 +1627,8 @@ autoUpdater.on('error', (err) => {
     } else if (err.message && err.message.includes('ECONNRESET')) {
         console.log('[Pairkiller] Auto-updater: Connection reset - retrying in 30 seconds.');
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Connection interrupted - will retry automatically');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1626,7 +1649,8 @@ autoUpdater.on('error', (err) => {
                                err.message.includes('not signed by the application owner'))) {
         console.log('[Pairkiller] Auto-updater: Code signature validation failed. This can happen with beta builds or during development.');
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Update validation failed - please download manually from GitHub');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1642,7 +1666,8 @@ autoUpdater.on('error', (err) => {
                                err.message.includes('access denied'))) {
         console.log('[Pairkiller] Auto-updater: Permission denied - app may need to be run as administrator for updates.');
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Permission denied - try running as administrator');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1656,7 +1681,8 @@ autoUpdater.on('error', (err) => {
     } else if (err.message && err.message.includes('ENOSPC')) {
         console.log('[Pairkiller] Auto-updater: Insufficient disk space for update.');
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Insufficient disk space for update');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1696,7 +1722,8 @@ autoUpdater.on('error', (err) => {
             debug('Network/certificate error during update (not reporting to Sentry):', err.message);
         }
         
-        if (updateWindow && !updateWindow.isDestroyed()) {
+        // Only show error message if it was a manual check
+        if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
             updateWindow.webContents.send('update-status', 'Error checking for updates - please try again later');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
@@ -1704,6 +1731,9 @@ autoUpdater.on('error', (err) => {
                 }
             }, 3000);
         }
+    
+    // Reset manual check flag on any error
+    isManualUpdateCheck = false;
     }
 });
 
@@ -1956,6 +1986,7 @@ function setupMenuBar() {
                 {
                     label: 'Check for Updates...',
                     click: () => {
+                        isManualUpdateCheck = true;
                         autoUpdater.checkForUpdatesAndNotify();
                     }
                 },
@@ -2036,6 +2067,7 @@ function setupMenuBar() {
 // Update checking with enhanced safety
 ipcMain.on('check-for-updates', () => {
     debug('Manual update check requested');
+    isManualUpdateCheck = true;
     autoUpdater.checkForUpdatesAndNotify().catch(err => {
         console.error('Manual update check failed:', err);
         if (updateWindow && !updateWindow.isDestroyed()) {
