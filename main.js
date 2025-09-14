@@ -1547,6 +1547,18 @@ autoUpdater.setFeedURL({
     repo: 'pairkiller'
 });
 
+// Disable signature verification for unsigned builds
+// This is safe for open-source applications distributed via GitHub
+autoUpdater.autoDownload = false; // Don't auto-download, let user confirm
+autoUpdater.allowDowngrade = false;
+autoUpdater.allowPrerelease = false;
+
+// For Windows: disable signature checking for unsigned builds
+if (isWindows) {
+    process.env['ELECTRON_UPDATER_ALLOW_UNPACKAGED'] = '1';
+    // This allows updates from unsigned packages which is common for open-source apps
+}
+
 // Track if update check was manual (from user) or automatic (background)
 let isManualUpdateCheck = false;
 
@@ -1574,6 +1586,16 @@ autoUpdater.on('update-available', (info) => {
     
     // Always open update window when update is found
     openUpdateWindow();
+    
+    // Since autoDownload is disabled, start the download manually after user sees the notification
+    setTimeout(() => {
+        autoUpdater.downloadUpdate().catch(error => {
+            console.error('Failed to download update:', error);
+            if (updateWindow && !updateWindow.isDestroyed()) {
+                updateWindow.webContents.send('update-status', 'Failed to download update - please download manually from GitHub');
+            }
+        });
+    }, 2000); // Give user time to see the notification
     
     // Reset manual check flag
     isManualUpdateCheck = false;
@@ -1647,20 +1669,22 @@ autoUpdater.on('error', (err) => {
                                err.message.includes('code failed to satisfy') ||
                                err.message.includes('validation') ||
                                err.message.includes('not signed by the application owner'))) {
-        console.log('[Pairkiller] Auto-updater: Code signature validation failed. This can happen with beta builds or during development.');
+        console.log('[Pairkiller] Auto-updater: Code signature validation failed. This is expected for unsigned open-source applications.');
         
-        // Only show error message if it was a manual check
+        // Only show helpful message if it was a manual check
         if (isManualUpdateCheck && updateWindow && !updateWindow.isDestroyed()) {
-            updateWindow.webContents.send('update-status', 'Update validation failed - please download manually from GitHub');
+            updateWindow.webContents.send('update-status', 'App is unsigned - please download updates from GitHub releases page');
             setTimeout(() => {
                 if (updateWindow && !updateWindow.isDestroyed()) {
                     updateWindow.close();
                 }
+                // Open GitHub releases page
+                shell.openExternal('https://github.com/hybes/pairkiller/releases/latest');
             }, 5000);
         }
         
-        // Don't report code signature errors to Sentry - these are often environmental
-        debug('Code signature validation error (not reporting to Sentry):', err.message);
+        // Don't report code signature errors to Sentry - these are expected for unsigned apps
+        debug('Code signature validation error (expected for unsigned app):', err.message);
     } else if (err.message && (err.message.includes('EACCES') || 
                                err.message.includes('permission denied') ||
                                err.message.includes('access denied'))) {
