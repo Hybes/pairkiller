@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "concurrently \"npm run watch:css\" \"electron . --dev\"",
-    "build": "npm run build:css && npx electron-builder",
+    "build": "npm run build:css && npx electron-builder --publish=never",
     "build:all": "npm run build:css && npx electron-builder --mac --win --linux",
     "build:mac": "npm run build:css && npx electron-builder --mac",
     "build:win": "npm run build:css && npx electron-builder --win",
